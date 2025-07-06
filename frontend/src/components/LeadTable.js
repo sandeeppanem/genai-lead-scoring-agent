@@ -26,7 +26,7 @@ import {
   Score as ScoreIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
-import { getLeads, scoreLeads } from '../services/api';
+import { default as api } from '../services/api';
 
 const LeadTable = () => {
   const [leads, setLeads] = useState([]);
@@ -47,8 +47,13 @@ const LeadTable = () => {
     const fetchLeads = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`/api/leads?page=${currentPage}&page_size=${pageSize}${searchTerm ? `&search=${searchTerm}` : ''}`);
-        const data = await response.json();
+        const params = {
+          page: currentPage,
+          page_size: pageSize,
+        };
+        if (searchTerm) params.search = searchTerm;
+        const response = await api.get('/leads', { params });
+        const data = response.data;
         setLeads(data.leads);
         setTotalLeads(data.total);
         setTotalPages(Math.ceil(data.total / pageSize));
