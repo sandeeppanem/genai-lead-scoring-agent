@@ -1,0 +1,6 @@
+name,company,email,phone,industry,company_size,revenue,lead_source,website,location,job_title,notes
+John Smith,TechCorp Inc,john.smith@techcorp.com,+1-555-123-4567,Technology,51-200,$10M-$50M,Website,www.techcorp.com,San Francisco CA,CTO,Interested in AI solutions
+Sarah Johnson,HealthCare Plus,sarah.j@healthcareplus.com,+1-555-234-5678,Healthcare,201-500,$50M-$100M,LinkedIn,www.healthcareplus.com,Boston MA,VP Sales,Looking for patient management software
+Mike Davis,FinanceFirst,mike.davis@financefirst.com,+1-555-345-6789,Finance,1000+,$100M+,Email Campaign,www.financefirst.com,New York NY,CEO,Exploring fintech partnerships
+Lisa Chen,EdTech Solutions,lisa.chen@edtech.com,+1-555-456-7890,Education,11-50,$1M-$10M,Trade Show,www.edtech.com,Austin TX,Marketing Director,Interested in learning platforms
+David Wilson,ManufacturePro,david.wilson@manufacturepro.com,+1-555-567-8901,Manufacturing,501-1000,$50M-$100M,Referral,www.manufacturepro.com,Detroit MI,VP Operations,Need automation solutions 

@@ -1,0 +1,296 @@
+{
+  "1": {
+    "lead_id": 1,
+    "score": 25,
+    "explanation": "This lead shows multiple concerning indicators: zero website engagement (no visits, time on site, or page views), came through Olark Chat (typically lower quality), and is marked as 'Low in Relevance'. While they have decent activity and profile scores (15 each), their unemployed status and lack of engagement with marketing channels or willingness to pay are red flags. The only positive factors are their interest in better career prospects and no communication blocks.",
+    "confidence": 0.85,
+    "factors": [
+      "Zero website engagement (0 visits, 0 seconds)",
+      "Low quality lead source (Olark Chat)",
+      "Unemployed status",
+      "Low in Relevance quality rating",
+      "No engagement with marketing channels",
+      "No willingness to pay",
+      "Decent activity and profile scores (15/15)",
+      "No communication blocks",
+      "Interest in better career prospects",
+      "Company size and revenue suggest potential if re-engaged"
+    ],
+    "prefilled_data": {
+      "industry": "General Management",
+      "lead_quality": "Low in Relevance",
+      "lead_profile": "Cold Lead",
+      "tags": "Interested in other courses",
+      "occupation": "Unemployed",
+      "other_fields": {
+        "location": "United States",
+        "specialization": "Business Administration"
+      }
+    },
+    "scored_at": "2025-07-06T10:19:19.219695"
+  },
+  "2": {
+    "lead_id": 2,
+    "score": 58,
+    "explanation": "This lead shows moderate potential with some strong engagement metrics but also several concerning factors. The positive indicators include 5 total visits, moderate time on website (674s), good activity and profile scores (both 15), and engagement through organic search. The lead is actively opening emails and has expressed interest in career prospects, which is promising. However, being unemployed, having minimal marketing channel engagement, and showing no willingness for financial commitment (agree to pay cheque: No) are concerning factors. The lead's origin through API and organic search is quality-positive, but the lack of engagement with additional marketing channels and updates suggests moderate interest level.",
+    "confidence": 0.75,
+    "factors": [
+      "Good engagement metrics (5 visits, 674s on site)",
+      "High activity and profile scores (15/15)",
+      "Quality lead source (Organic Search)",
+      "Positive email engagement (Last activity: Email Opened)",
+      "No communication blocks",
+      "Unemployed status (negative)",
+      "Limited marketing channel engagement (negative)",
+      "No financial commitment indicators (negative)",
+      "Clear career improvement motivation",
+      "Moderate time on website",
+      "Active email engagement"
+    ],
+    "prefilled_data": {
+      "industry": "Business Administration",
+      "lead_quality": "Might be",
+      "lead_profile": "Potential Lead",
+      "tags": "Ringing - Following Up",
+      "occupation": "Unemployed",
+      "other_fields": {
+        "location": "Mumbai, India",
+        "how_heard": "Google Search"
+      }
+    },
+    "scored_at": "2025-07-06T10:19:19.220573"
+  },
+  "3": {
+    "lead_id": 3,
+    "score": 72,
+    "explanation": "This lead shows strong positive indicators despite being a student. Key strengths include: good website engagement (2 visits, 1532s time on site), quality lead source (Direct Traffic), complete contact information, high activity (14) and profile scores (20), positive recent activities (Email Opened), clear course interest (Better Career Prospects), and no communication blocks. The lead quality is 'Might be' with a 'Potential Lead' profile, suggesting good conversion potential. However, being a student rather than a working professional and having limited marketing channel engagement slightly reduces the score. The engagement metrics and profile scores are particularly impressive, matching patterns of successful conversions.",
+    "confidence": 0.85,
+    "factors": [
+      "Strong website engagement (2 visits, 1532s)",
+      "High profile score (20) and activity score (14)",
+      "Quality lead source (Direct Traffic)",
+      "Positive recent activity (Email Opened)",
+      "Complete contact information",
+      "Clear course interest",
+      "No communication blocks",
+      "Business Administration specialization",
+      "Student status (slight negative)",
+      "Limited marketing channel engagement",
+      "Positive lead quality indicators",
+      "Good profile status"
+    ],
+    "prefilled_data": {
+      "industry": "Business Administration",
+      "lead_quality": "Might be",
+      "lead_profile": "Potential Lead",
+      "tags": "Will revert after reading the email",
+      "occupation": "Student",
+      "other_fields": {
+        "how_heard": "Direct Website Visit"
+      }
+    },
+    "scored_at": "2025-07-06T10:19:19.222445"
+  },
+  "4": {
+    "lead_id": 4,
+    "score": 35,
+    "explanation": "This lead shows several concerning factors that indicate a lower probability of conversion. While they came through Direct Traffic (a typically good source) and submitted via Landing Page, their engagement metrics are quite low (single visit, only 305 seconds, 1 page view). Their last activity status of 'Unreachable' is particularly concerning. Being unemployed and marked as 'Not Sure' for lead quality also reduces the score. However, there are some positive aspects: complete contact information, no communication blocks, and decent profile score (17). The Media and Advertising background could be valuable, but combined with unemployment status and low engagement, it suggests limited immediate potential.",
+    "confidence": 0.85,
+    "factors": [
+      "Low engagement metrics (1 visit, 305s, 1 page view)",
+      "Unemployed status",
+      "Last activity: Unreachable",
+      "Low activity score (13)",
+      "No interest in additional updates or content",
+      "Not willing to pay by cheque",
+      "Direct Traffic source (positive)",
+      "Complete contact information (positive)",
+      "No communication blocks (positive)",
+      "Good profile score of 17 (positive)",
+      "Relevant industry background (positive)"
+    ],
+    "prefilled_data": {
+      "industry": "Media and Advertising",
+      "lead_quality": "Not Sure",
+      "lead_profile": "Potential Lead",
+      "tags": "Ringing",
+      "occupation": "Unemployed",
+      "other_fields": "No additional fields needed prefilling"
+    },
+    "scored_at": "2025-07-06T10:19:19.224480"
+  },
+  "5": {
+    "lead_id": 5,
+    "score": 62,
+    "explanation": "This lead shows moderate to good potential despite being unemployed. The positive indicators include good website engagement (2 visits, 1428s on site), quality lead source (Google), high activity score (15) and profile score (18), and positive last activity (Converted to Lead). The lead quality is marked as 'Might be' and they're interested in better career prospects, which aligns well with their current unemployed status. No communication blocks exist. However, there are some limiting factors: they haven't opted for any additional updates or services, show limited marketing channel engagement, and haven't agreed to payment options. The time spent on the website (1428s) and activity scores suggest genuine interest, but the lack of broader engagement across marketing channels and additional services reduces the overall score.",
+    "confidence": 0.85,
+    "factors": [
+      "Good website engagement (1428s time on site)",
+      "Quality lead source (Google)",
+      "High activity score (15) and profile score (18)",
+      "Positive last activity (Converted to Lead)",
+      "No communication blocks",
+      "Clear career improvement motivation",
+      "Limited marketing channel engagement",
+      "No agreement to additional services or updates",
+      "Unemployed status but actively seeking improvement",
+      "Good time investment on website"
+    ],
+    "prefilled_data": {
+      "industry": "Business Administration",
+      "lead_quality": "Might be",
+      "lead_profile": "Potential Lead",
+      "tags": "Will revert after reading the email",
+      "occupation": "Unemployed",
+      "other_fields": "No additional fields needed prefilling"
+    },
+    "scored_at": "2025-07-06T10:19:19.226928"
+  },
+  "6": {
+    "lead_id": 6,
+    "score": 35,
+    "explanation": "This lead shows several concerning indicators despite some positive elements. The lead came through Olark Chat with zero website engagement (0 visits, 0 seconds, 0 page views), which historically correlates with lower conversion rates. However, the activity score (17) and profile score (15) are surprisingly good, suggesting some potential. The lack of engagement across marketing channels, no interest in updates, and no willingness for payment are negative factors. The company size is small (1-10) but with significant revenue ($50M-$100M), which creates an unusual profile. The only positive aspects are the lack of communication blocks and the decent activity/profile scores.",
+    "confidence": 0.85,
+    "factors": [
+      "Zero website engagement metrics",
+      "Olark Chat source (typically lower quality)",
+      "No marketing channel engagement",
+      "Good activity score (17) and profile score (15)",
+      "No communication blocks",
+      "No demonstrated interest in courses or updates",
+      "No payment willingness indicators",
+      "Limited contact information",
+      "API origin with minimal interaction",
+      "Small company size but high revenue (unusual combination)"
+    ],
+    "prefilled_data": {
+      "industry": "Business Administration",
+      "lead_quality": "Low in Relevance",
+      "lead_profile": "New Lead",
+      "tags": "Olark Chat Conversation",
+      "occupation": "Working Professional",
+      "other_fields": {
+        "job_title": "Junior Manager",
+        "location": "United States"
+      }
+    },
+    "scored_at": "2025-07-06T10:19:19.229457"
+  },
+  "7": {
+    "lead_id": 7,
+    "score": 45,
+    "explanation": "This lead shows mixed signals. While there are some positive engagement indicators (2 visits, 1640s on site, good lead source from Google), several factors pull the score down. The lead is unemployed, has indicated 'Low in Relevance' quality, and shows minimal interest in additional services or updates. The engagement metrics are decent (activity score 14, profile score 20), but the lack of professional status and low interest in additional services suggests limited immediate conversion potential. The lead source being Google and landing page submission is positive, but the overall profile suggests someone who might be just exploring options without serious intent to convert.",
+    "confidence": 0.85,
+    "factors": [
+      "POSITIVE: Good lead source (Google)",
+      "POSITIVE: Decent website engagement (1640s, 2 visits)",
+      "POSITIVE: No communication blocks",
+      "POSITIVE: Good profile score (20)",
+      "NEGATIVE: Unemployed status",
+      "NEGATIVE: Low in Relevance quality",
+      "NEGATIVE: No interest in additional services/updates",
+      "NEGATIVE: No willingness to pay",
+      "NEGATIVE: Limited page views (2.0 per visit)",
+      "NEGATIVE: No engagement with marketing channels"
+    ],
+    "prefilled_data": {
+      "industry": "Supply Chain Management",
+      "lead_quality": "Low in Relevance",
+      "lead_profile": "Potential Lead",
+      "tags": "Will revert after reading the email",
+      "occupation": "Unemployed",
+      "other_fields": "No additional fields needed prefilling as data was complete"
+    },
+    "scored_at": "2025-07-06T10:19:19.232938"
+  },
+  "11": {
+    "lead_id": 11,
+    "score": 72,
+    "explanation": "This lead shows strong engagement metrics and positive indicators despite being currently unemployed. The high number of visits (8), substantial time on website (1351s), and good page views per visit (8.0) indicate serious interest. The lead came through Organic Search and Landing Page Submission, which are quality sources. Activity and Profile scores are strong (15 and 14 respectively). The lead quality is 'Might be' with positive email engagement and no communication blocks. The Travel and Tourism specialization shows clear career direction. The only concerning factors are the unemployment status and lack of marketing channel engagement.",
+    "confidence": 0.85,
+    "factors": [
+      "High engagement metrics (8 visits, 1351s on site)",
+      "Quality lead source (Organic Search)",
+      "Strong activity score (15) and profile score (14)",
+      "Positive email engagement (Last activity: Email Opened)",
+      "No communication blocks",
+      "Clear specialization (Travel and Tourism)",
+      "Complete contact information",
+      "Career-focused interest (Better Career Prospects)",
+      "Positive tag indicator",
+      "Currently unemployed (negative factor)",
+      "Limited marketing channel engagement (negative factor)",
+      "No agreement to pay cheque (negative factor)"
+    ],
+    "prefilled_data": {
+      "industry": "Travel and Tourism",
+      "lead_quality": "Might be",
+      "lead_profile": "Potential Lead",
+      "tags": "Will revert after reading the email",
+      "occupation": "Unemployed",
+      "other_fields": {
+        "how_heard": "Search Engine"
+      }
+    },
+    "scored_at": "2025-07-06T10:19:19.235550"
+  },
+  "12": {
+    "lead_id": 12,
+    "score": 58,
+    "explanation": "This lead shows mixed indicators with some strong engagement metrics but also some concerning factors. The high visit count (8) and good time on website (1343s) show serious interest. Activity score (14) and Profile score (17) are both solid. Direct Traffic as lead source is generally positive. However, being unemployed, losing to EINS, and showing no interest in various marketing channels or payment options are significant negative factors. The HR Management specialization is relevant, but the unemployed status suggests possible budget constraints.",
+    "confidence": 0.85,
+    "factors": [
+      "POSITIVE: High number of visits (8)",
+      "POSITIVE: Good time on website (1343s)",
+      "POSITIVE: Strong activity score (14) and profile score (17)",
+      "POSITIVE: Direct Traffic source",
+      "POSITIVE: No communication blocks",
+      "NEGATIVE: Unemployed status",
+      "NEGATIVE: Lost to competitor (EINS)",
+      "NEGATIVE: No interest in updates or payment options",
+      "NEGATIVE: Limited engagement with marketing channels",
+      "NEUTRAL: Relevant specialization (HR Management)"
+    ],
+    "prefilled_data": {
+      "industry": "Human Resource Management",
+      "lead_quality": "Might be",
+      "lead_profile": "Potential Lead",
+      "tags": "Lost to EINS",
+      "occupation": "Unemployed",
+      "how_heard": "Direct Website Visit"
+    },
+    "scored_at": "2025-07-06T10:19:19.238128"
+  },
+  "13": {
+    "lead_id": 13,
+    "score": 72,
+    "explanation": "This lead shows strong engagement metrics and positive indicators despite being currently unemployed. The high number of visits (11), substantial time on website (1538s), and good page views per visit (11.0) indicate serious interest. The lead came through Organic Search, which is a quality source. Both Activity and Profile scores are high at 16. The lead quality is 'Might be' with a 'Potential Lead' profile, and recent email engagement shows active interest. The Marketing Management specialization aligns well with career prospects interest. The only significant negative factors are the unemployed status and lack of marketing channel engagement.",
+    "confidence": 0.85,
+    "factors": [
+      "High website engagement (11 visits, 1538s, 11 page views)",
+      "Quality lead source (Organic Search)",
+      "High activity and profile scores (both 16)",
+      "Positive recent activity (Email Opened)",
+      "Clear specialization (Marketing Management)",
+      "No communication blocks",
+      "Good lead quality indicators",
+      "Positive lead profile",
+      "Currently unemployed (negative)",
+      "Limited marketing channel engagement (negative)",
+      "Complete contact information",
+      "Career-focused interest"
+    ],
+    "prefilled_data": {
+      "industry": "Marketing Management",
+      "lead_quality": "Might be",
+      "lead_profile": "Potential Lead",
+      "tags": "Will revert after reading the email",
+      "occupation": "Unemployed",
+      "other_fields": {
+        "location": "Unknown, India",
+        "how_heard": "Search Engine"
+      }
+    },
+    "scored_at": "2025-07-06T10:19:19.246319"
+  }
+}
