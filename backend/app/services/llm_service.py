@@ -8,7 +8,7 @@ from .score_storage import ScoreStorage
 class LLMService:
     def __init__(self):
         self.client = None
-        self.model = "claude-3-5-sonnet-20241022"
+        self.model = "claude-3-haiku-20240307"
         self.score_storage = ScoreStorage()
         self._initialize_client()
     
