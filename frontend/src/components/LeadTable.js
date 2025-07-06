@@ -26,7 +26,7 @@ import {
   Score as ScoreIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
-import { default as api } from '../services/api';
+import { default as api, scoreLeads } from '../services/api';
 
 const LeadTable = () => {
   const [leads, setLeads] = useState([]);
