@@ -8,6 +8,7 @@ from ..services.data_service import DataService
 from ..services.llm_service import LLMService
 import os
 from dotenv import load_dotenv
+import time
 
 # Load environment variables before initializing services
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
@@ -21,6 +22,11 @@ router = APIRouter()
 # Initialize services
 data_service = DataService()
 llm_service = LLMService()
+
+# Simple in-memory cache for /api/stats
+_stats_cache = None
+_stats_cache_time = 0
+_STATS_CACHE_TTL = 86400  # 1 day in seconds
 
 @router.get("/", response_model=dict)
 async def root():
@@ -166,24 +172,27 @@ async def ask_question(request: LeadQuery):
 
 @router.get("/stats", response_model=dict)
 async def get_statistics():
-    """Get lead statistics and insights"""
+    """Get lead statistics and insights (cached for 1 hour)"""
+    global _stats_cache, _stats_cache_time
     try:
+        now = time.time()
+        if _stats_cache and (now - _stats_cache_time < _STATS_CACHE_TTL):
+            return _stats_cache
         # Get basic statistics
         stats = data_service.get_lead_statistics()
-        
         # Get limited leads for AI insights to prevent token limit errors
         result = data_service.get_leads(page=1, page_size=100)  # Limit to 100 leads
         leads = result['leads']
-        
         # Get AI insights
         insights = llm_service.get_lead_insights(leads)
-        
         # Combine statistics and insights
         combined_stats = {
             **stats,
             "ai_insights": insights
         }
-        
+        # Cache the result
+        _stats_cache = combined_stats
+        _stats_cache_time = now
         return combined_stats
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching statistics: {str(e)}")
