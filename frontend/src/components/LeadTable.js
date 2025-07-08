@@ -475,7 +475,7 @@ const LeadTable = () => {
                             </Typography>
                             {Object.entries(scores[lead.id].prefilled_data).map(([key, value]) => (
                               <Typography key={key} variant="caption" display="block">
-                                {key}: {value}
+                                {key}: {typeof value === 'object' ? JSON.stringify(value) : value}
                               </Typography>
                             ))}
                           </Box>
