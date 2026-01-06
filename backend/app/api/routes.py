@@ -2,13 +2,16 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List, Optional, Dict, Any
 from ..models import (
     Lead, LeadScore, LeadQuery, LeadQueryResponse, 
-    LeadListResponse, LeadScoreRequest
+    LeadListResponse, LeadScoreRequest, WebFormLead, DiscoveredLead
 )
 from ..services.data_service import DataService
 from ..services.llm_service import LLMService
+from ..services.lead_enrichment_service import LeadEnrichmentService
+from ..services.email_generation_service import EmailGenerationService
 import os
 from dotenv import load_dotenv
 import time
+from datetime import datetime
 
 # Load environment variables before initializing services
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
@@ -247,4 +250,179 @@ async def health_check():
             "data_service": "operational",
             "llm_service": "operational"
         }
-    } 
+    }
+
+@router.post("/leads/web-form")
+async def submit_web_form_lead(lead_data: WebFormLead):
+    """
+    Handle web form submissions (ACTIVE leads)
+    Automatically enriches and scores the lead
+    """
+    try:
+        # Initialize services
+        enrichment_service = LeadEnrichmentService()
+        email_service = EmailGenerationService()
+        
+        # Convert to lead dict
+        # Get next available ID
+        all_leads = data_service.get_leads(page=1, page_size=1000)
+        next_id = max([lead.get('id', 0) for lead in all_leads.get('leads', [])], default=0) + 1
+        
+        lead_dict = {
+            'id': next_id,
+            'name': lead_data.name,
+            'email': lead_data.email,
+            'company': lead_data.company,
+            'job_title': lead_data.job_title or 'Unknown',
+            'industry': lead_data.industry or 'Unknown',
+            'phone': lead_data.phone,
+            'website': lead_data.website,
+            'lead_source': lead_data.lead_source,
+            'lead_source_type': 'active',  # Mark as active
+            'created_date': datetime.now(),
+            'notes': lead_data.message,
+            'location': 'Unknown',
+            'company_size': None,
+            'revenue': None
+        }
+        
+        # Step 1: Enrich
+        enriched_lead = enrichment_service.enrich_lead(lead_dict)
+        research_report = enriched_lead.get('research_report', '')
+        
+        # Step 2: Score with routing
+        score_result = llm_service.score_lead_with_routing(
+            enriched_lead, 
+            research_report
+        )
+        
+        # Step 3: Generate email if high score
+        email_data = None
+        if score_result.get('routing', {}).get('next_action') == 'active_outreach':
+            email_data = email_service.generate_outreach_email(
+                enriched_lead,
+                score_result,
+                research_report
+            )
+        
+        # Store the score
+        llm_service.score_storage.store_scores([score_result])
+        
+        return {
+            "lead_id": lead_dict['id'],
+            "score": score_result.get('score'),
+            "routing": score_result.get('routing'),
+            "email": email_data,
+            "research_report": research_report,
+            "message": "Lead processed successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing web form lead: {str(e)}")
+
+@router.post("/leads/discover")
+async def discover_passive_lead(lead_data: DiscoveredLead):
+    """
+    Handle discovered leads (PASSIVE leads from web scraping/search)
+    """
+    try:
+        # Initialize services
+        enrichment_service = LeadEnrichmentService()
+        
+        # Get next available ID
+        all_leads = data_service.get_leads(page=1, page_size=1000)
+        next_id = max([lead.get('id', 0) for lead in all_leads.get('leads', [])], default=0) + 1
+        
+        # Generate email if not provided
+        email = lead_data.email
+        if not email:
+            email = f"{lead_data.name.lower().replace(' ', '.')}@{lead_data.company.lower().replace(' ', '').replace('.', '')}.com"
+        
+        # Convert to lead dict
+        lead_dict = {
+            'id': next_id,
+            'name': lead_data.name,
+            'email': email,
+            'company': lead_data.company,
+            'job_title': lead_data.job_title or 'Unknown',
+            'industry': lead_data.industry or 'Unknown',
+            'website': lead_data.website,
+            'lead_source': lead_data.discovery_source,
+            'lead_source_type': 'passive',  # Mark as passive
+            'discovery_source': lead_data.discovery_source,
+            'created_date': datetime.now(),
+            'notes': f"Discovered from: {lead_data.discovery_source}. Context: {lead_data.context or 'N/A'}",
+            'location': 'Unknown',
+            'phone': None,
+            'company_size': None,
+            'revenue': None
+        }
+        
+        # Enrich and score
+        enriched_lead = enrichment_service.enrich_lead(lead_dict)
+        research_report = enriched_lead.get('research_report', '')
+        
+        score_result = llm_service.score_lead_with_routing(
+            enriched_lead,
+            research_report
+        )
+        
+        # Store the score
+        llm_service.score_storage.store_scores([score_result])
+        
+        return {
+            "lead_id": lead_dict['id'],
+            "score": score_result.get('score'),
+            "routing": score_result.get('routing'),
+            "research_report": research_report,
+            "message": "Discovered lead processed"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing discovered lead: {str(e)}")
+
+@router.post("/leads/{lead_id}/enrich-and-score")
+async def enrich_and_score_lead(lead_id: int):
+    """
+    Enrich an existing lead and score it with routing
+    """
+    try:
+        # Get lead
+        lead = data_service.get_lead_by_id(lead_id)
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        
+        # Enrich
+        enrichment_service = LeadEnrichmentService()
+        enriched_lead = enrichment_service.enrich_lead(lead)
+        research_report = enriched_lead.get('research_report', '')
+        
+        # Score with routing
+        score_result = llm_service.score_lead_with_routing(
+            enriched_lead,
+            research_report
+        )
+        
+        # Store the score
+        llm_service.score_storage.store_scores([score_result])
+        
+        # Generate email if high score
+        email_data = None
+        if score_result.get('routing', {}).get('next_action') == 'active_outreach':
+            email_service = EmailGenerationService()
+            email_data = email_service.generate_outreach_email(
+                enriched_lead,
+                score_result,
+                research_report
+            )
+        
+        return {
+            "lead_id": lead_id,
+            "score": score_result.get('score'),
+            "routing": score_result.get('routing'),
+            "research_report": research_report,
+            "email": email_data,
+            "message": "Lead enriched and scored successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error enriching and scoring lead: {str(e)}") 

@@ -15,11 +15,13 @@ import {
 import {
   Dashboard as DashboardIcon,
   People as PeopleIcon,
-  Chat as ChatIcon
+  Chat as ChatIcon,
+  AddCircle as AddCircleIcon
 } from '@mui/icons-material';
 import Dashboard from './components/Dashboard';
 import LeadTable from './components/LeadTable';
 import AIChat from './components/AIChat';
+import LeadForm from './components/LeadForm';
 import { getStatistics } from './services/api';
 
 const theme = createTheme({
@@ -80,6 +82,11 @@ function App() {
       case 1:
         return <LeadTable />;
       case 2:
+        return <LeadForm onLeadSubmitted={(data) => {
+          console.log('Lead submitted:', data);
+          // Optionally refresh the lead table or show notification
+        }} />;
+      case 3:
         return <AIChat />;
       default:
         return <Dashboard 
@@ -129,6 +136,11 @@ function App() {
               <Tab 
                 icon={<PeopleIcon />} 
                 label="Leads" 
+                iconPosition="start"
+              />
+              <Tab 
+                icon={<AddCircleIcon />} 
+                label="Submit Lead" 
                 iconPosition="start"
               />
               <Tab 

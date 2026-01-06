@@ -1,304 +1,531 @@
-# GenAI Lead Scoring Assistant
+# AI-Powered Lead Scoring Agent and Analytics Dashboard
 
-[![Vercel](https://img.shields.io/badge/Vercel-Live-green?logo=vercel)](https://genai-lead-scoring-agent.vercel.app/)
-[![Render](https://img.shields.io/badge/Render-API-blue?logo=render)](https://genai-lead-scoring-agent.onrender.com/)
-[![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+A comprehensive multi-agent system for B2B lead scoring, enrichment, routing, and automated outreach. This application leverages Generative AI (Claude/Anthropic) to automatically score leads, determine engagement strategies, and generate personalized outreach emails.
 
-A GenAI-powered Sales/Lead-Scoring Assistant with a FastAPI backend and React frontend, using Anthropic Claude API for AI lead scoring and insights.
+## 🎯 Project Overview
 
----
+This project is an intelligent lead management system that combines:
+- **AI-Powered Lead Scoring**: Automatically scores leads from 0-100 based on multiple factors
+- **Lead Enrichment**: Enhances lead data with AI-generated research reports
+- **Intelligent Routing**: Determines whether leads should receive active outreach or nurture campaigns
+- **Email Generation**: Creates personalized outreach emails for high-scoring leads
+- **Analytics Dashboard**: Provides insights into lead quality, conversion rates, and performance metrics
+- **AI Chat Assistant**: Natural language interface for querying lead data
 
-## 🖼️ Demo Screenshot
+## 🏗️ Architecture
 
-<!-- Replace the link below with your screenshot or GIF -->
-![App Screenshot](screenshot.png)
+### System Architecture Diagram
 
----
-
-## 🚀 Live Demo
-
-- **Frontend (Vercel):** [https://genai-lead-scoring-agent.vercel.app/](https://genai-lead-scoring-agent.vercel.app/)
-- **Backend (Render):** [https://genai-lead-scoring-agent.onrender.com/](https://genai-lead-scoring-agent.onrender.com/)
-- **API Docs:** [https://genai-lead-scoring-agent.onrender.com/docs](https://genai-lead-scoring-agent.onrender.com/docs)
-
----
-
-## 📊 Dataset
-
-- **Source:** Kaggle Lead Scoring Dataset  
-  [https://www.kaggle.com/datasets/amritachatterjee09/lead-scoring-dataset](https://www.kaggle.com/datasets/amritachatterjee09/lead-scoring-dataset)
-
----
-
-## 🛠️ Local Development Setup
-
-### 1. **Clone the Repo**
-```bash
-git clone https://github.com/sandeeppanem/genai-lead-scoring-agent.git
-cd genai-lead-scoring-agent
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         FRONTEND (React)                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│  │  Dashboard   │  │  LeadTable   │  │  LeadForm    │          │
+│  │  Component   │  │  Component   │  │  Component   │          │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘          │
+│         │                 │                  │                   │
+│  ┌──────┴─────────────────┴──────────────────┴───────┐          │
+│  │              API Service Layer                     │          │
+│  │              (api.js)                             │          │
+│  └───────────────────────┬───────────────────────────┘          │
+└───────────────────────────┼──────────────────────────────────────┘
+                            │ HTTP/REST
+┌───────────────────────────┼──────────────────────────────────────┐
+│                    BACKEND (FastAPI)                             │
+├───────────────────────────┼──────────────────────────────────────┤
+│                            │                                       │
+│  ┌─────────────────────────┴─────────────────────────┐         │
+│  │              API Routes (routes.py)                  │         │
+│  │  • GET  /api/leads                                   │         │
+│  │  • POST /api/score                                   │         │
+│  │  • POST /api/leads/web-form                          │         │
+│  │  • POST /api/leads/discover                          │         │
+│  │  • POST /api/question                                │         │
+│  │  • GET  /api/stats                                   │         │
+│  └────────────────────┬────────────────────────────────┘         │
+│                       │                                            │
+│  ┌────────────────────┴────────────────────────────────┐         │
+│  │              Service Layer                            │         │
+│  │                                                       │         │
+│  │  ┌──────────────────────────────────────────────┐    │         │
+│  │  │  DataService                                  │    │         │
+│  │  │  • Lead data management                       │    │         │
+│  │  │  • CSV/Data loading                           │    │         │
+│  │  │  • Statistics calculation                      │    │         │
+│  │  └──────────────────────────────────────────────┘    │         │
+│  │                                                       │         │
+│  │  ┌──────────────────────────────────────────────┐    │         │
+│  │  │  LeadEnrichmentService                       │    │         │
+│  │  │  • AI-powered lead enrichment                │    │         │
+│  │  │  • Research report generation                │    │         │
+│  │  └──────────────────────────────────────────────┘    │         │
+│  │                                                       │         │
+│  │  ┌──────────────────────────────────────────────┐    │         │
+│  │  │  LLMService                                   │    │         │
+│  │  │  • Lead scoring (0-100)                       │    │         │
+│  │  │  • Routing decisions                          │    │         │
+│  │  │  • Question answering                         │    │         │
+│  │  │  • Lead insights                              │    │         │
+│  │  └──────────────────────────────────────────────┘    │         │
+│  │                                                       │         │
+│  │  ┌──────────────────────────────────────────────┐    │         │
+│  │  │  EmailGenerationService                      │    │         │
+│  │  │  • Personalized email generation             │    │         │
+│  │  │  • Subject line creation                      │    │         │
+│  │  │  • CTA generation                             │    │         │
+│  │  └──────────────────────────────────────────────┘    │         │
+│  │                                                       │         │
+│  │  ┌──────────────────────────────────────────────┐    │         │
+│  │  │  ScoreStorage                                 │    │         │
+│  │  │  • Score persistence (JSON)                   │    │         │
+│  │  │  • Cache management                           │    │         │
+│  │  └──────────────────────────────────────────────┘    │         │
+│  └───────────────────────────────────────────────────────┘         │
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────┐       │
+│  │              External Services                          │       │
+│  │  • Anthropic Claude API (AI/LLM)                       │       │
+│  │  • Data Storage (CSV files, JSON)                      │       │
+│  └───────────────────────────────────────────────────────┘       │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2. **Backend Setup**
-```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-# Add your Anthropic API key to .env
-cp .env.example .env  # or create .env manually
-# Start the backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+### Lead Processing Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    LEAD PROCESSING WORKFLOW                      │
+└─────────────────────────────────────────────────────────────────┘
+
+ACTIVE LEADS (Web Form)              PASSIVE LEADS (Discovery)
+        │                                      │
+        ▼                                      ▼
+┌───────────────┐                    ┌───────────────┐
+│  Lead Input   │                    │  Lead Input   │
+│  (Web Form)   │                    │  (Discovery)  │
+└───────┬───────┘                    └───────┬───────┘
+        │                                      │
+        └──────────────┬───────────────────────┘
+                       │
+                       ▼
+            ┌──────────────────────┐
+            │  Lead Enrichment     │
+            │  Service             │
+            │  • Research Report   │
+            │  • Company Insights  │
+            └──────────┬───────────┘
+                       │
+                       ▼
+            ┌──────────────────────┐
+            │  Lead Scoring        │
+            │  Service             │
+            │  • Score (0-100)     │
+            │  • Explanation       │
+            │  • Confidence        │
+            └──────────┬───────────┘
+                       │
+                       ▼
+            ┌──────────────────────┐
+            │  Routing Decision    │
+            │  • Score >= 65       │
+            │    → Active Outreach │
+            │  • Score 40-64       │
+            │    → Nurture         │
+            │  • Score < 40        │
+            │    → Long-term       │
+            └──────────┬───────────┘
+                       │
+        ┌───────────────┴───────────────┐
+        │                               │
+        ▼                               ▼
+┌───────────────┐            ┌───────────────┐
+│ Active        │            │ Nurture      │
+│ Outreach      │            │ Campaign      │
+│ • Email Gen   │            │ • Sequence    │
+│ • Immediate   │            │ • Staggered   │
+└───────────────┘            └───────────────┘
 ```
 
-### 3. **Frontend Setup**
-```bash
-cd ../frontend
-npm install
-# (Optional) Create .env with:
-# REACT_APP_API_URL=http://localhost:8000/api
-npm start
+## 📁 Project Structure
+
 ```
-
----
-
-## ⚡ Features
-- Upload and analyze real lead data
-- AI-powered lead scoring and insights
-- Conversion outcome analytics
-- Deployable for free (Vercel + Render)
-
----
-
-## 📝 Notes
-- The backend uses the Kaggle dataset (see above) and expects it at `backend/data/leads.csv`.
-- Do **not** commit your `.env` files or API keys to git.
-- For production, set environment variables in Vercel/Render dashboards.
-
----
-
-## 🙏 Credits
-- [Kaggle Lead Scoring Dataset](https://www.kaggle.com/datasets/amritachatterjee09/lead-scoring-dataset)
-- [Anthropic Claude API](https://www.anthropic.com/)
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [React](https://react.dev/)
+genai-lead-scoring-agent/
+├── backend/
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py                 # FastAPI application entry point
+│   │   ├── models.py               # Pydantic models (Lead, LeadScore, etc.)
+│   │   ├── api/
+│   │   │   ├── __init__.py
+│   │   │   └── routes.py           # API endpoints
+│   │   └── services/
+│   │       ├── __init__.py
+│   │       ├── data_service.py     # Lead data management
+│   │       ├── llm_service.py      # AI scoring & routing
+│   │       ├── lead_enrichment_service.py  # Lead enrichment
+│   │       ├── email_generation_service.py  # Email generation
+│   │       └── score_storage.py    # Score persistence
+│   ├── data/
+│   │   ├── leads.csv               # Lead dataset
+│   │   └── sample_leads.csv
+│   ├── requirements.txt            # Python dependencies
+│   ├── env.example                  # Environment variables template
+│   └── scores.json                 # Stored scores (generated)
+│
+├── frontend/
+│   ├── src/
+│   │   ├── App.js                  # Main app component
+│   │   ├── index.js                # React entry point
+│   │   ├── components/
+│   │   │   ├── Dashboard.js        # Analytics dashboard
+│   │   │   ├── LeadTable.js        # Lead management table
+│   │   │   ├── LeadForm.js         # Web form for active leads
+│   │   │   └── AIChat.js           # AI chat assistant
+│   │   └── services/
+│   │       └── api.js              # API client
+│   ├── package.json                # Node dependencies
+│   └── public/
+│       └── index.html
+│
+├── README.md                       # This file
+├── LICENSE
+└── .env                            # Environment variables (create from env.example)
+```
 
 ## 🚀 Features
 
-### Core Functionality
-- **AI-Powered Lead Scoring**: Automatically score leads from 0-100 with detailed explanations
-- **Natural Language Queries**: Ask questions about your leads in plain English
-- **Lead Management**: View, search, and manage lead data with pagination
-- **Analytics Dashboard**: Visual charts and metrics for lead analysis
-- **AI Chat Assistant**: Interactive chat interface for lead insights
+### 1. **AI-Powered Lead Scoring**
+- Automatically scores leads from 0-100 based on:
+  - Engagement metrics (visits, time on site, page views)
+  - Lead source quality
+  - Job title and decision-making authority
+  - Industry fit
+  - Activity scores
+  - Communication preferences
+- Provides detailed explanations and confidence scores
+- Prefills missing data with intelligent estimates
 
-### Technical Features
-- **Public Data Integration**: Uses public datasets or generates synthetic data
-- **Real-time Scoring**: Instant AI scoring with confidence levels
-- **Responsive UI**: Modern Material-UI interface
-- **RESTful API**: FastAPI backend with automatic documentation
-- **CORS Support**: Ready for production deployment
+### 2. **Lead Enrichment**
+- AI-generated research reports for each lead
+- Company profile analysis
+- Industry insights
+- Decision-maker identification
+- Technology stack analysis (for tech companies)
 
-## 🛠️ Tech Stack
+### 3. **Intelligent Routing**
+- Automatically determines next action:
+  - **Active Outreach** (Score 65+): Immediate personalized email
+  - **Nurture Campaign** (Score 40-64): Email sequence
+  - **Long-term Nurture** (Score <40): Educational content
+- Provides engagement strategy and talking points
+
+### 4. **Email Generation**
+- Generates personalized outreach emails for high-scoring leads
+- Creates compelling subject lines
+- Writes value-focused email bodies
+- Includes clear call-to-action
+
+### 5. **Dual Lead Sources**
+- **Active Leads**: Web form submissions (users coming to you)
+- **Passive Leads**: Discovered leads (you finding them online)
+- Tracks lead source type for analytics
+
+### 6. **Analytics Dashboard**
+- Lead statistics and metrics
+- Conversion rate analysis
+- Industry and source distribution
+- AI-generated insights
+- Visual charts and graphs
+
+### 7. **AI Chat Assistant**
+- Natural language queries about leads
+- Ask questions like:
+  - "Which leads have the highest potential?"
+  - "What are the top industries?"
+  - "Show me leads from technology sector"
+- Provides actionable insights
+
+### 8. **Lead Management**
+- Paginated lead table
+- Search functionality
+- Bulk lead scoring
+- Score analytics and accuracy tracking
+- Conversion status tracking
+
+## 🛠️ Technology Stack
 
 ### Backend
-- **Python 3.8+**
-- **FastAPI** - Modern web framework
-- **Anthropic Claude 3 Sonnet** - AI/LLM integration
-- **Pandas** - Data processing
-- **Pydantic** - Data validation
+- **FastAPI**: Modern Python web framework
+- **Anthropic Claude**: AI/LLM for scoring and generation
+- **Pandas**: Data processing
+- **Pydantic**: Data validation
+- **Uvicorn**: ASGI server
 
 ### Frontend
-- **React 18**
-- **Material-UI (MUI)** - UI components
-- **Recharts** - Data visualization
-- **Axios** - HTTP client
+- **React**: UI framework
+- **Material-UI (MUI)**: Component library
+- **Axios**: HTTP client
+- **Recharts**: Data visualization
 
-## 📋 Prerequisites
+## 📦 Installation & Setup
 
-- Python 3.8 or higher
-- Node.js 16 or higher
+### Prerequisites
+- Python 3.9+
+- Node.js 16+
 - Anthropic API key
 
-## 🚀 Quick Start
+### Backend Setup
 
-### 1. Clone the Repository
-```bash
-git clone <repository-url>
-cd genai-lead-scoring-agent
-```
+1. **Navigate to backend directory**
+   ```bash
+   cd backend
+   ```
 
-### 2. Backend Setup
+2. **Create virtual environment**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
 
-```bash
-# Navigate to backend directory
-cd backend
+3. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+4. **Set up environment variables**
+   ```bash
+   cp env.example .env
+   ```
+   Edit `.env` and add your Anthropic API key:
+   ```
+   ANTHROPIC_API_KEY=your-api-key-here
+   ```
 
-# Install dependencies
-pip install -r requirements.txt
+5. **Run the backend**
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+   Backend will run on `http://localhost:8000`
 
-# Set up environment variables
-cp env.example .env
-# Edit .env and add your Anthropic API key
-```
+### Frontend Setup
 
-### 3. Frontend Setup
+1. **Navigate to frontend directory**
+   ```bash
+   cd frontend
+   ```
 
-```bash
-# Navigate to frontend directory
-cd frontend
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-# Install dependencies
-npm install
-```
+3. **Update API URL** (if needed)
+   Edit `src/services/api.js` and update `API_BASE_URL` if your backend is on a different URL.
 
-### 4. Environment Configuration
+4. **Run the frontend**
+   ```bash
+   npm start
+   ```
+   Frontend will run on `http://localhost:3000`
 
-Create a `.env` file in the backend directory:
-
-```env
-ANTHROPIC_API_KEY=your-anthropic-api-key
-```
-
-### 5. Run the Application
-
-#### Start Backend (Terminal 1)
-```bash
-cd backend
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-#### Start Frontend (Terminal 2)
-```bash
-cd frontend
-npm start
-```
-
-### 6. Access the Application
-
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
-
-## 📊 Data Sources
-
-The application uses:
-1. **Public Datasets**: Attempts to load from public lead scoring datasets
-2. **Synthetic Data**: Generates realistic lead data if public data is unavailable
-3. **Custom Data**: Can be extended to use your own lead data
-
-## 🎯 Usage Guide
-
-### Dashboard
-- View key metrics and lead statistics
-- Analyze lead distribution by industry, source, and company size
-- Get AI-powered insights and recommendations
+## 📡 API Endpoints
 
 ### Lead Management
-- Browse all leads with pagination
-- Search leads by name, company, email, or industry
-- Select leads for AI scoring
-- View detailed lead information
-
-### AI Assistant
-- Ask natural language questions about your leads
-- Get AI-powered insights and analysis
-- Examples:
-  - "Which leads have the highest potential?"
-  - "What are the top industries in our database?"
-  - "Show me leads from the technology sector"
-  - "What lead sources are performing best?"
+- `GET /api/leads` - Get paginated leads (with optional search)
+- `GET /api/leads/{lead_id}` - Get specific lead
+- `GET /api/leads/{lead_id}/details` - Get detailed lead information
 
 ### Lead Scoring
-- Select one or multiple leads
-- Click "Score Selected" to get AI-powered scores
-- View detailed explanations for each score
-- Scores range from 0-100 with confidence levels
+- `POST /api/score` - Score multiple leads
+  ```json
+  {
+    "lead_ids": [1, 2, 3]
+  }
+  ```
 
-## 🔧 API Endpoints
+### Active Lead Submission
+- `POST /api/leads/web-form` - Submit active lead from web form
+  ```json
+  {
+    "name": "John Doe",
+    "email": "john@example.com",
+    "company": "Example Corp",
+    "job_title": "CEO",
+    "industry": "Technology",
+    "website": "https://example.com",
+    "message": "Interested in your services"
+  }
+  ```
 
-### Lead Management
-- `GET /api/leads` - Get paginated leads
-- `GET /api/leads/{id}` - Get specific lead
-- `GET /api/stats` - Get lead statistics
+### Passive Lead Discovery
+- `POST /api/leads/discover` - Submit discovered lead
+  ```json
+  {
+    "name": "Jane Smith",
+    "email": "jane@company.com",
+    "company": "Company Inc",
+    "discovery_source": "LinkedIn",
+    "context": "Found on LinkedIn company page"
+  }
+  ```
+
+### Lead Enrichment & Scoring
+- `POST /api/leads/{lead_id}/enrich-and-score` - Enrich and score existing lead
 
 ### AI Features
-- `POST /api/score` - Score leads using AI
 - `POST /api/question` - Ask AI questions about leads
+  ```json
+  {
+    "question": "Which leads have the highest potential?",
+    "lead_ids": [1, 2, 3]  // optional
+  }
+  ```
 
-### Health
-- `GET /api/health` - Health check
+### Analytics
+- `GET /api/stats` - Get lead statistics and AI insights
+- `GET /api/scores` - Get all stored scores
+- `DELETE /api/scores` - Clear all scores
 
-## 🚀 Deployment
+### Health Check
+- `GET /api/health` - Health check endpoint
 
-### Backend Deployment (Heroku)
-```bash
-# Create Procfile
-echo "web: uvicorn app.main:app --host 0.0.0.0 --port \$PORT" > Procfile
+## 🎨 Frontend Components
 
-# Deploy to Heroku
-heroku create your-app-name
-heroku config:set ANTHROPIC_API_KEY=your-api-key
-git push heroku main
-```
+### Dashboard Component
+- Displays lead statistics
+- Shows conversion rates
+- Industry and source distribution charts
+- AI-generated insights
+- Real-time data refresh
 
-### Frontend Deployment (Vercel)
-```bash
-# Build the application
-npm run build
+### LeadTable Component
+- Paginated lead table
+- Search functionality
+- Bulk lead selection and scoring
+- Score display with color coding
+- Routing decision display
+- Conversion status tracking
+- Score accuracy indicators
 
-# Deploy to Vercel
-vercel --prod
-```
+### LeadForm Component
+- Web form for active lead submission
+- Real-time lead processing
+- Displays score and routing decision
+- Shows generated email (if high score)
+- Form validation
 
-### Environment Variables for Production
+### AIChat Component
+- Natural language interface
+- Ask questions about leads
+- Get AI-powered insights
+- Chat history
+- Real-time responses
+
+## 🔧 Configuration
+
+### Environment Variables
+
+Create a `.env` file in the `backend` directory:
+
 ```env
-ANTHROPIC_API_KEY=your-anthropic-api-key
-REACT_APP_API_URL=https://your-backend-url.com/api
+ANTHROPIC_API_KEY=your-anthropic-api-key-here
 ```
 
-## 🔒 Security Considerations
+### API Configuration
 
-- Store API keys securely using environment variables
-- Implement proper authentication for production use
-- Use HTTPS in production
-- Consider rate limiting for API endpoints
-- Validate and sanitize all user inputs
+Update `frontend/src/services/api.js` to point to your backend:
+
+```javascript
+const API_BASE_URL = 'http://localhost:8000/api';  // Local
+// or
+const API_BASE_URL = 'https://your-backend-url.com/api';  // Production
+```
+
+## 📊 Data Flow
+
+1. **Lead Ingestion**
+   - Active: Web form → API → Enrichment → Scoring
+   - Passive: Discovery → API → Enrichment → Scoring
+
+2. **Enrichment Process**
+   - AI analyzes lead data
+   - Generates research report
+   - Enhances lead with insights
+
+3. **Scoring Process**
+   - AI evaluates lead on multiple factors
+   - Generates score (0-100)
+   - Provides explanation and confidence
+
+4. **Routing Decision**
+   - Based on score, determines next action
+   - Generates engagement strategy
+   - Creates talking points
+
+5. **Email Generation** (if high score)
+   - Generates personalized email
+   - Creates subject line
+   - Writes body and CTA
+
+6. **Storage**
+   - Scores stored in `scores.json`
+   - Lead data in memory/CSV
+   - Analytics cached for performance
+
+## 🧪 Testing
+
+### Backend API Testing
+Visit `http://localhost:8000/docs` for interactive API documentation (Swagger UI)
+
+### Frontend Testing
+```bash
+cd frontend
+npm test
+```
+
+## 🚢 Deployment
+
+### Backend Deployment
+1. Set environment variables on hosting platform
+2. Install dependencies: `pip install -r requirements.txt`
+3. Run with: `uvicorn app.main:app --host 0.0.0.0 --port 8000`
+
+### Frontend Deployment
+1. Build: `npm run build`
+2. Deploy `build/` folder to hosting platform
+3. Update API URL in production
+
+## 📈 Future Enhancements
+
+- [ ] Email sending integration (SendGrid/Mailgun)
+- [ ] Nurture campaign email sequence generation
+- [ ] CRM integration (Salesforce/HubSpot)
+- [ ] Real-time lead discovery from web scraping
+- [ ] Advanced analytics and reporting
+- [ ] Multi-user support with authentication
+- [ ] Webhook support for external integrations
+- [ ] A/B testing for email templates
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📝 License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🆘 Support
+## 👤 Author
 
-For support and questions:
-- Check the API documentation at `/docs`
-- Review the console logs for error details
-- Ensure your Anthropic API key is valid and has sufficient credits
+**Sandeep**
 
-## 🔮 Future Enhancements
+## 🙏 Acknowledgments
 
-- User authentication and authorization
-- Custom lead data import
-- Advanced filtering and segmentation
-- Email integration
-- CRM system integration
-- Advanced analytics and reporting
-- Multi-language support
-- Mobile application
+- Anthropic for Claude AI
+- FastAPI community
+- React and Material-UI communities
 
 ---
 
-**Note**: This application uses Anthropic's Claude API which incurs costs based on usage. Monitor your API usage and set appropriate limits in your Anthropic account. 
+**Note**: This project is a demonstration of AI-powered lead scoring and management. For production use, consider adding authentication, rate limiting, and proper database integration.

@@ -1,7 +1,7 @@
 import os
 import json
 import random
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from anthropic import Anthropic
 from .score_storage import ScoreStorage
 
@@ -403,4 +403,103 @@ class LLMService:
                 'common_company_sizes': [],
                 'recommendations': [f'Error: {str(e)}'],
                 'trends': f'Error occurred: {str(e)}'
+            }
+    
+    def score_lead_with_routing(
+        self, 
+        lead: Dict[str, Any], 
+        research_report: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Score lead and determine routing (nurture vs active outreach)
+        Most valuable: Determines next action automatically
+        """
+        # First score the lead (use existing method)
+        score_result = self.score_lead(lead)
+        
+        # Add routing decision
+        routing = self._determine_routing(
+            score_result['score'], 
+            lead, 
+            research_report
+        )
+        score_result['routing'] = routing
+        
+        return score_result
+    
+    def _determine_routing(
+        self, 
+        score: int, 
+        lead: Dict[str, Any], 
+        research_report: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Determine routing decision based on score"""
+        
+        if not self.client:
+            # Simple routing logic
+            if score >= 65:
+                return {
+                    "next_action": "active_outreach",
+                    "priority": "high",
+                    "strategy": "Immediate personalized outreach - high quality lead"
+                }
+            else:
+                return {
+                    "next_action": "nurture",
+                    "priority": "medium",
+                    "strategy": "Nurture with educational content"
+                }
+        
+        prompt = f"""
+        Lead Score: {score}/100
+        
+        Lead Info:
+        Name: {lead.get('name', 'N/A')}
+        Company: {lead.get('company', 'N/A')}
+        Industry: {lead.get('industry', 'N/A')}
+        Job Title: {lead.get('job_title', 'N/A')}
+        
+        Research: {research_report or 'No additional research'}
+        
+        Determine the best next action:
+        - Score 65+: Route to "active_outreach" (immediate personalized email)
+        - Score 40-64: Route to "nurture" (email sequence)
+        - Score <40: Route to "nurture" (long-term nurture)
+        
+        Provide:
+        1. next_action: "active_outreach" or "nurture"
+        2. priority: "high", "medium", or "low"
+        3. strategy: Brief engagement strategy (1-2 sentences)
+        4. talking_points: 3-5 key points for outreach
+        
+        JSON format:
+        {{
+            "next_action": "<active_outreach|nurture>",
+            "priority": "<high|medium|low>",
+            "strategy": "<strategy>",
+            "talking_points": ["<point1>", "<point2>", "<point3>"]
+        }}
+        """
+        
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=300,
+                system="You are a sales strategist. Always respond with valid JSON.",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            
+            content = response.content[0].text
+            routing = json.loads(content)
+            return routing
+        except Exception as e:
+            print(f"Error determining routing: {e}")
+            # Fallback
+            return {
+                "next_action": "active_outreach" if score >= 65 else "nurture",
+                "priority": "high" if score >= 65 else "medium",
+                "strategy": "Standard engagement",
+                "talking_points": []
             } 

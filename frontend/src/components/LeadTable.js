@@ -414,6 +414,7 @@ const LeadTable = () => {
               <TableCell>Activity Score</TableCell>
               <TableCell>Last Activity</TableCell>
               <TableCell>AI Score</TableCell>
+              <TableCell>Routing</TableCell>
               <TableCell>Conversion Status</TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
@@ -480,6 +481,22 @@ const LeadTable = () => {
                             ))}
                           </Box>
                         )}
+                        {scores[lead.id].routing && (
+                          <Box mt={1}>
+                            <Typography variant="caption" fontWeight="bold" color="primary">
+                              Routing:
+                            </Typography>
+                            <Typography variant="caption" display="block">
+                              Action: {scores[lead.id].routing.next_action === 'active_outreach' ? 'Active Outreach' : 'Nurture'}
+                            </Typography>
+                            <Typography variant="caption" display="block">
+                              Priority: {scores[lead.id].routing.priority}
+                            </Typography>
+                            <Typography variant="caption" display="block">
+                              {scores[lead.id].routing.strategy}
+                            </Typography>
+                          </Box>
+                        )}
                       </Box>
                     }>
                       <Box display="flex" alignItems="center" gap={0.5}>
@@ -511,6 +528,27 @@ const LeadTable = () => {
                   ) : (
                     <Typography variant="caption" color="text.secondary">
                       Not scored
+                    </Typography>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {scores[lead.id]?.routing ? (
+                    <Tooltip title={scores[lead.id].routing.strategy || ''}>
+                      <Chip
+                        label={scores[lead.id].routing.next_action === 'active_outreach' 
+                          ? 'Active Outreach' 
+                          : 'Nurture'}
+                        color={
+                          scores[lead.id].routing.priority === 'high' ? 'error' : 
+                          scores[lead.id].routing.priority === 'medium' ? 'warning' : 
+                          'default'
+                        }
+                        size="small"
+                      />
+                    </Tooltip>
+                  ) : (
+                    <Typography variant="caption" color="text.secondary">
+                      Not routed
                     </Typography>
                   )}
                 </TableCell>

@@ -51,6 +51,24 @@ class Lead(BaseModel):
     update_dm_content: Optional[str] = None
     agree_to_pay_cheque: Optional[str] = None
     free_copy_interview: Optional[str] = None
+    
+    # NEW: Lead source type tracking
+    lead_source_type: Optional[str] = Field(
+        None, 
+        description="active (web form) or passive (discovered)"
+    )
+    discovery_source: Optional[str] = Field(
+        None,
+        description="Where passive lead was discovered (forum, website, etc.)"
+    )
+    research_report: Optional[str] = Field(
+        None,
+        description="Enrichment research report"
+    )
+    routing_decision: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Routing decision after scoring"
+    )
 
 class LeadScore(BaseModel):
     lead_id: int
@@ -75,4 +93,27 @@ class LeadListResponse(BaseModel):
     page_size: int
 
 class LeadScoreRequest(BaseModel):
-    lead_ids: List[int] 
+    lead_ids: List[int]
+
+class WebFormLead(BaseModel):
+    """Model for web form submissions (active leads)"""
+    name: str
+    email: str
+    company: str
+    job_title: Optional[str] = None
+    industry: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    message: Optional[str] = None
+    lead_source: str = "Web Form"
+
+class DiscoveredLead(BaseModel):
+    """Model for discovered leads (passive)"""
+    name: str
+    email: Optional[str] = None
+    company: str
+    job_title: Optional[str] = None
+    industry: Optional[str] = None
+    website: Optional[str] = None
+    discovery_source: str  # e.g., "LinkedIn", "Industry Forum", "Company Website"
+    context: Optional[str] = None  # Where/how they were discovered 
