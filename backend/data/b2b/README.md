@@ -2,8 +2,7 @@
 
 `sales_win_loss.csv` is the public IBM Watson Sales Win/Loss sample. It contains
 78,025 closed B2B opportunities from one reporting period. The repository uses
-the public mirror below because the original IBM download is no longer easy to
-locate.
+the public mirror below as its versioned source.
 
 - Public mirror: <https://github.com/vkrit/data-science-class/blob/master/WA_Fn-UseC_-Sales-Win-Loss.csv>
 - SHA-256: `31afdb83aa46b54f62f5cdbfe1ccf00f395266254a0249c96ceef8522cc12b24`

@@ -1,89 +1,137 @@
-# Hybrid B2B opportunity prioritization
+# Current System Architecture
 
-## Product definition
+## System objective
 
-The application prioritizes a qualified B2B sales opportunity by estimating:
+The application prioritizes qualified B2B sales opportunities by estimating a
+calibrated closed-won probability from qualification-snapshot attributes. It
+serves the probability as a 0–100 score, explains the model contribution of each
+business feature, and applies a deterministic capacity policy.
 
-> P(opportunity is closed-won | fields available at the qualification snapshot)
+## Runtime architecture
 
-The calibrated probability is the score. Language models cannot create or
-modify it. This public sample does not include dates, so it cannot support a
-defensible “won within N days” target; production data must add `scored_at`,
-`qualified_at`, `closed_at`, and an explicit prediction horizon.
+```mermaid
+flowchart TD
+    subgraph Data
+        CSV[(IBM Sales Win/Loss CSV)]
+        DS[DataService]
+        CSV --> DS
+    end
 
-## Dataset decision
+    subgraph Scoring
+        FC[Canonical feature contract]
+        PP[Imputation, scaling, and one-hot encoding]
+        XGB[XGBoost classifier]
+        PC[Platt calibrator]
+        TS[TreeSHAP source-feature aggregation]
+        RP[Routing policy]
 
-| Dataset | Domain | Size | Honest evaluation | Decision |
-| --- | --- | ---: | --- | --- |
-| Maven CRM opportunities | Simulated B2B hardware sales | 8,800 | Out-of-time ROC-AUC ~0.53 in our leakage-screened benchmark | Do not use as the primary model |
-| IBM Watson Sales Win/Loss | B2B opportunity outcomes | 78,025 | Grouped XGBoost test ROC-AUC 0.8215; top-decile lift 3.19x | Use for the architecture baseline |
+        FC --> PP --> XGB
+        XGB --> PC
+        XGB --> TS
+        PC --> RP
+    end
 
-The IBM sample is superior for this repository's B2B purpose, but it is still a
-sample dataset without dates, account IDs, or unstructured communications. It
-must not be presented as proof of production performance.
+    subgraph Application
+        API[FastAPI routes]
+        STORE[(Atomic JSON score cache)]
+        LLM[Optional Claude explanation]
+        ANALYTICS[Allow-listed analytics]
+        UI[React application]
 
-## Target architecture
+        API <--> STORE
+        API --> LLM --> API
+        API --> UI
+        ANALYTICS --> API
+    end
 
-```text
-CRM snapshot + consent state + engagement events
-                         |
-                         v
-               point-in-time feature view <--- versioned LLM extraction
-                         |                       + evidence spans
-                         v
-          calibrated ML propensity model
-                         |
-                  probability + rank
-                         |
-             verified model contributions
-                         |
-     deterministic policy (capacity, consent, SLA)
-                         |
-      grounded LLM explanation / outreach draft
-                         |
-        human-approved action + outcome event
-                         |
-             monitoring and delayed labels
+    DS --> FC
+    DS --> ANALYTICS
+    PC --> API
+    TS --> API
+    RP --> API
 ```
 
-Conversational analytics follows a separate path: the language model selects a
-read-only, allow-listed aggregation; application code executes it over the full
-eligible population; the model summarizes the returned table together with its
-filters, row count, and time window. This is tool-grounding, not RAG. RAG is only
-needed later if policy documents, product material, or playbooks become an
-explanation source.
+## Scoring sequence
 
-## Responsibility boundaries
+```mermaid
+sequenceDiagram
+    participant UI as React UI
+    participant API as FastAPI
+    participant Data as DataService
+    participant ML as MLScoringService
+    participant Cache as ScoreStorage
+    participant Policy as PolicyService
 
-| Layer | Owns | Must not do |
-| --- | --- | --- |
-| ML | Propensity, ranking, calibration | Read post-outcome fields or generated prose |
-| LLM extraction | Typed intent from supplied text, with evidence | Invent missing facts or alter probability |
-| Explanation | Render verified factors and evidence | Add unsupported reasons |
-| Policy | Capacity, consent, routing, SLA | Delegate fixed thresholds to an LLM |
-| Action | Draft/create a task after authorization | Send messages autonomously by default |
+    UI->>API: POST /api/opportunities/score {record_ids}
+    API->>Data: Load requested opportunities
+    Data-->>API: Qualification fields
+    API->>ML: Score opportunities
+    ML->>Cache: Check model version and input hash
+    alt Valid cached result
+        Cache-->>ML: Stored score
+    else New or changed input
+        ML->>ML: Transform features and predict margin
+        ML->>ML: Calibrate probability and compute TreeSHAP
+        ML->>Policy: Apply calibrated thresholds
+        Policy-->>ML: Controlled routing decision
+        ML->>Cache: Atomic score write
+    end
+    ML-->>API: Score, probability, factors, routing, versions
+    API-->>UI: Typed OpportunityScore response
+```
 
-## Implementation sequence
+## Component contracts
 
-1. **Baseline (implemented in this change):** B2B dataset adapter, four-way grouped
-   split, logistic benchmark, calibrated XGBoost champion, native TreeSHAP factors,
-   deterministic routing, metadata, and tests.
-2. **Grounded UX:** B2B opportunity table, held-out metrics and calibration view,
-   factor drawer, model version, and explicit data limitations.
-3. **Language layer:** evidence-bearing extraction schema for actual notes/email;
-   keep extracted fields out of ML until labeled text history proves lift.
-4. **Analytics tools:** allow-listed group/filter/rank functions over all records;
-   optional LLM planner with validated arguments and auditable results.
-5. **Production data:** timestamped CRM snapshots, outcome maturation, rolling
-   time splits, champion/challenger training, SHAP for the nonlinear challenger,
-   drift/calibration monitoring, and outcome feedback.
+| Component | Inputs | Outputs | Enforced behavior |
+| --- | --- | --- | --- |
+| `DataService` | Source CSV, pagination, search, filters | Typed opportunity records and aggregates | Read-only access and exact-match supported filters |
+| Feature contract | Qualification-time record fields | Ordered model feature frame | Same schema in training and inference |
+| XGBoost | Transformed feature matrix | Raw margin and propensity ranking | Outcome and completed-cycle fields are absent |
+| Platt calibrator | Raw XGBoost margin | Calibrated probability | Fitted only on the calibration partition |
+| TreeSHAP | XGBoost model and transformed row | Positive and negative source-feature factors | One-hot contributions aggregate to source business fields |
+| `PolicyService` | Calibrated probability and thresholds | Priority and next action | Deterministic; automated outreach disabled |
+| `LLMService` | Immutable score evidence | Explanation and missing-information narrative | Cannot write score, factors, model version, or routing |
+| `AnalyticsService` | Natural-language question | Verified aggregate and scope metadata | Uses only allow-listed computations over matching records |
+| `ScoreStorage` | Score result | Versioned cached result | Input-hash validation, locking, and atomic replacement |
 
-## Production acceptance gates
+## Training architecture
 
-- Zero post-outcome features in offline or online feature views.
-- Time-based test set with a fully matured outcome horizon.
-- Calibration error, Brier score, PR-AUC, and lift reported by segment.
-- Policy thresholds selected from capacity and expected value, not accuracy.
-- Model, feature, extraction, prompt, and policy versions stored per score.
-- No score returned on operational failure; failures are explicit states.
-- PII redaction, least-privilege access, consent enforcement, and an audit log.
+The training script performs the following reproducible flow:
+
+1. Verify and load the source dataset.
+2. Normalize column names, types, outcomes, and exact duplicates.
+3. Split opportunity-number groups into training, validation, calibration, and
+   final-test partitions.
+4. Fit the preprocessing pipeline on training data.
+5. Select the configured XGBoost depth using validation ROC-AUC.
+6. Refit preprocessing and XGBoost on training plus validation data.
+7. Fit Platt calibration and capacity thresholds on the calibration partition.
+8. Evaluate once on the untouched test partition.
+9. Persist the model pipeline, calibrator, feature names, thresholds, source
+   checksum, runtime versions, and model card.
+
+## Analytics architecture
+
+Conversational analytics is implemented as controlled application tooling. The
+question parser selects a supported dimension or ranking operation, extracts
+exact supported filters, and executes the calculation over all matching records.
+The response reports:
+
+- The computed answer
+- Matching population size
+- Applied filters
+- Source record IDs for ranked opportunities
+- The dataset time-window description
+
+## Operational controls
+
+- CORS origins are environment-configured and methods are restricted.
+- API keys are loaded from environment variables and are never logged.
+- Model readiness and load errors are exposed by the health endpoint.
+- Scores are accepted from the calibrated ML service only.
+- Cache hits require both the active model version and the exact input hash.
+- The outcome is available for evaluation displays but never enters inference.
+- LLM output is structurally validated and wrapped with application-owned
+  decision fields.
+- Score persistence uses a process-local lock, file synchronization, and atomic
+  replacement.
