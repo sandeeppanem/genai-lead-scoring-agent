@@ -1,304 +1,262 @@
-# GenAI Lead Scoring Assistant
+# Hybrid ML + GenAI B2B Opportunity Prioritization
 
-[![Vercel](https://img.shields.io/badge/Vercel-Live-green?logo=vercel)](https://genai-lead-scoring-agent.vercel.app/)
-[![Render](https://img.shields.io/badge/Render-API-blue?logo=render)](https://genai-lead-scoring-agent.onrender.com/)
-[![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+A full-stack sales-prioritization system that ranks B2B opportunities by their
+calibrated probability of closing as won. XGBoost owns the score, TreeSHAP
+provides model-grounded factors, deterministic policy code selects the next
+action, and an optional LLM turns verified evidence into a concise narrative.
 
-A GenAI-powered Sales/Lead-Scoring Assistant with a FastAPI backend and React frontend, using Anthropic Claude API for AI lead scoring and insights.
+## What the system solves
 
----
+Sales teams have limited review capacity and need a consistent way to focus on
+the opportunities most likely to convert. This application converts historical
+sales outcomes and qualification-time attributes into an auditable 0–100 score,
+a prioritized workflow, and portfolio-level analytics.
 
-## 🖼️ Demo Screenshot
+The application provides:
 
-<!-- Replace the link below with your screenshot or GIF -->
-![App Screenshot](screenshot.png)
+- Calibrated win probabilities and 0–100 opportunity scores
+- Batch scoring for selected opportunities
+- Positive and negative TreeSHAP factors for every prediction
+- Capacity-based routing to sales review, nurture, or low priority
+- Optional Claude explanations grounded in the score, factors, and policy
+- Verified conversational analytics over the complete matching population
+- A React dashboard for model metrics, portfolio analytics, and scoring
+- Versioned, input-hashed score caching with atomic local persistence
+- Health and model-card endpoints for operational visibility
 
----
+## Architecture
 
-## 🚀 Live Demo
+```mermaid
+flowchart TD
+    DATA[(B2B sales outcomes)] --> DS[Data service]
+    DS --> FEATURES[Shared feature contract]
 
-- **Frontend (Vercel):** [https://genai-lead-scoring-agent.vercel.app/](https://genai-lead-scoring-agent.vercel.app/)
-- **Backend (Render):** [https://genai-lead-scoring-agent.onrender.com/](https://genai-lead-scoring-agent.onrender.com/)
-- **API Docs:** [https://genai-lead-scoring-agent.onrender.com/docs](https://genai-lead-scoring-agent.onrender.com/docs)
+    FEATURES --> XGB[XGBoost classifier]
+    XGB --> CAL[Platt calibration]
+    CAL --> SCORE[Win probability and 0-100 score]
+    XGB --> SHAP[TreeSHAP factor attribution]
 
----
+    SCORE --> POLICY[Deterministic routing policy]
+    SCORE --> API[FastAPI service]
+    SHAP --> API
+    POLICY --> API
 
-## 📊 Dataset
+    API --> CACHE[(Versioned score cache)]
+    API --> UI[React dashboard and opportunity table]
 
-- **Source:** Kaggle Lead Scoring Dataset  
-  [https://www.kaggle.com/datasets/amritachatterjee09/lead-scoring-dataset](https://www.kaggle.com/datasets/amritachatterjee09/lead-scoring-dataset)
+    API --> LLM[Optional grounded LLM explanation]
+    LLM --> UI
 
----
-
-## 🛠️ Local Development Setup
-
-### 1. **Clone the Repo**
-```bash
-git clone https://github.com/sandeeppanem/genai-lead-scoring-agent.git
-cd genai-lead-scoring-agent
+    DS --> TOOLS[Allow-listed analytics tools]
+    TOOLS --> API
 ```
 
-### 2. **Backend Setup**
+The prediction and explanation paths have separate responsibilities. The LLM
+receives an immutable model score, verified factors, observed fields, and the
+policy decision. It produces narrative text only; it cannot create or modify a
+probability or routing action.
+
+See [docs/hybrid-architecture.md](docs/hybrid-architecture.md) for the detailed
+runtime flow and component contracts.
+
+## Components
+
+| Component | Responsibility |
+| --- | --- |
+| React frontend | Model dashboard, opportunity selection, scores, factors, routing, and analytics chat |
+| FastAPI backend | Typed API contracts, orchestration, health checks, and error handling |
+| Data service | B2B dataset loading, normalization, pagination, search, and aggregates |
+| Feature pipeline | Identical categorical and numerical transformations for training and inference |
+| XGBoost model | Opportunity win propensity and ranking |
+| Platt calibrator | Maps model margins to calibrated probabilities |
+| TreeSHAP layer | Attributes raw model-margin changes to source business features |
+| Policy service | Applies capacity thresholds and returns controlled next actions |
+| LLM service | Produces optional explanations from verified evidence in a typed response envelope |
+| Analytics service | Executes approved filters, groupings, and rankings over all eligible records |
+| Score storage | Stores model-versioned and input-hashed results using atomic file replacement |
+
+## Prediction contract
+
+The model estimates:
+
+> P(opportunity is closed-won | attributes available at the qualification snapshot)
+
+The lead score is:
+
+> Lead score = 100 × calibrated win probability
+
+Online model features are:
+
+- Opportunity amount, transformed with `log1p`
+- Client revenue band
+- Client employee-count band
+- Revenue from the client during the previous two years
+- Product group and subgroup
+- Region
+- Route to market
+- Competitor status
+
+Outcome and completed-sales-cycle fields are kept outside the online feature
+contract. This includes stage duration, stage changes, total-cycle duration,
+closing ratios, and the derived deal-size category.
+
+## Dataset
+
+The application uses the public IBM Watson Sales Win/Loss sample:
+
+- 78,025 B2B opportunity rows at ingestion
+- 77,970 records after removing 55 exact duplicates
+- 17,627 won and 60,398 lost outcomes before deduplication
+- Product, geography, route-to-market, amount, client-size, prior-revenue, and
+  competitor attributes
+
+The source, checksum, usage note, and field policy are documented in
+[backend/data/b2b/README.md](backend/data/b2b/README.md). The sample represents a
+single reporting period and does not contain event timestamps, account IDs, or
+unstructured communications. Evaluation therefore uses group-disjoint splits
+by opportunity number.
+
+## Model training and evaluation
+
+Training uses four group-disjoint partitions:
+
+- 50% training
+- 15% validation and XGBoost model selection
+- 15% probability calibration and policy-threshold selection
+- 20% untouched final testing
+
+The selected XGBoost model is refit on training plus validation data. A separate
+Platt calibrator is fitted on calibration data, and the final metrics are then
+computed on the untouched test partition.
+
+| Test metric | XGBoost |
+| --- | ---: |
+| ROC-AUC | 0.8215 |
+| Average precision | 0.6211 |
+| Brier score | 0.1303 |
+| Log loss | 0.4108 |
+| Precision at top 10% | 74.0% |
+| Top-decile lift | 3.19× |
+
+The complete model card, split sizes, feature contract, thresholds, runtime
+versions, and metrics are stored in
+[backend/models/b2b_opportunity_model.json](backend/models/b2b_opportunity_model.json).
+
+## Policy and explanations
+
+The calibration population determines two routing thresholds:
+
+- High priority: top 20% of calibrated opportunities, routed to sales review
+- Medium priority: above the calibration-set median, routed to nurture
+- Low priority: below the calibration-set median
+
+Automated outreach is disabled for every route. The optional LLM endpoint uses
+a typed response envelope: score, probability, TreeSHAP factors, model version,
+and routing are copied from verified application services. Only the explanation
+and missing-information narrative can be language-generated.
+
+## Conversational analytics
+
+The analytics endpoint maps questions to allow-listed operations over the full
+eligible dataset. It currently supports:
+
+- Win rate by region
+- Win rate by route to market
+- Win rate by product group
+- Win rate by competitor status
+- Highest-value opportunities
+- Exact filters for supported dimensions
+
+Every response includes the matching population size, applied filters, source
+record IDs when applicable, and the available time-window description.
+
+## API
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/opportunities` | Paginated opportunity records with search |
+| `GET` | `/api/opportunities/{record_id}` | One opportunity record |
+| `POST` | `/api/opportunities/score` | Batch calibrated scoring, factors, and routing |
+| `POST` | `/api/opportunities/{record_id}/explanation` | Typed grounded explanation |
+| `GET` | `/api/model` | Model card and readiness |
+| `POST` | `/api/question` | Verified conversational analytics |
+| `GET` | `/api/stats` | Portfolio aggregates |
+| `GET` | `/api/scores` | Current-model cached scores |
+| `DELETE` | `/api/scores` | Clear the local score cache |
+| `GET` | `/api/health` | Data, ML model, and optional LLM health |
+
+Example batch score request:
+
 ```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-# Add your Anthropic API key to .env
-cp .env.example .env  # or create .env manually
-# Start the backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+curl -X POST http://localhost:8000/api/opportunities/score \
+  -H 'Content-Type: application/json' \
+  -d '{"record_ids":[1,2,3]}'
 ```
 
-### 3. **Frontend Setup**
-```bash
-cd ../frontend
-npm install
-# (Optional) Create .env with:
-# REACT_APP_API_URL=http://localhost:8000/api
-npm start
-```
-
----
-
-## ⚡ Features
-- Upload and analyze real lead data
-- AI-powered lead scoring and insights
-- Conversion outcome analytics
-- Deployable for free (Vercel + Render)
-
----
-
-## 📝 Notes
-- The backend uses the Kaggle dataset (see above) and expects it at `backend/data/leads.csv`.
-- Do **not** commit your `.env` files or API keys to git.
-- For production, set environment variables in Vercel/Render dashboards.
-
----
-
-## 🙏 Credits
-- [Kaggle Lead Scoring Dataset](https://www.kaggle.com/datasets/amritachatterjee09/lead-scoring-dataset)
-- [Anthropic Claude API](https://www.anthropic.com/)
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [React](https://react.dev/)
-
-## 🚀 Features
-
-### Core Functionality
-- **AI-Powered Lead Scoring**: Automatically score leads from 0-100 with detailed explanations
-- **Natural Language Queries**: Ask questions about your leads in plain English
-- **Lead Management**: View, search, and manage lead data with pagination
-- **Analytics Dashboard**: Visual charts and metrics for lead analysis
-- **AI Chat Assistant**: Interactive chat interface for lead insights
-
-### Technical Features
-- **Public Data Integration**: Uses public datasets or generates synthetic data
-- **Real-time Scoring**: Instant AI scoring with confidence levels
-- **Responsive UI**: Modern Material-UI interface
-- **RESTful API**: FastAPI backend with automatic documentation
-- **CORS Support**: Ready for production deployment
-
-## 🛠️ Tech Stack
+## Run locally
 
 ### Backend
-- **Python 3.8+**
-- **FastAPI** - Modern web framework
-- **Anthropic Claude 3 Sonnet** - AI/LLM integration
-- **Pandas** - Data processing
-- **Pydantic** - Data validation
+
+```bash
+python3 -m venv backend/venv
+source backend/venv/bin/activate
+pip install -r backend/requirements.txt
+uvicorn app.main:app --app-dir backend --reload --port 8000
+```
+
+The scoring and analytics paths do not require an LLM key. To enable generated
+explanations, copy `backend/env.example` to `backend/.env` and set
+`ANTHROPIC_API_KEY`. CORS origins can be configured with
+`CORS_ALLOWED_ORIGINS`.
 
 ### Frontend
-- **React 18**
-- **Material-UI (MUI)** - UI components
-- **Recharts** - Data visualization
-- **Axios** - HTTP client
-
-## 📋 Prerequisites
-
-- Python 3.8 or higher
-- Node.js 16 or higher
-- Anthropic API key
-
-## 🚀 Quick Start
-
-### 1. Clone the Repository
-```bash
-git clone <repository-url>
-cd genai-lead-scoring-agent
-```
-
-### 2. Backend Setup
 
 ```bash
-# Navigate to backend directory
-cd backend
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set up environment variables
-cp env.example .env
-# Edit .env and add your Anthropic API key
-```
-
-### 3. Frontend Setup
-
-```bash
-# Navigate to frontend directory
 cd frontend
-
-# Install dependencies
 npm install
-```
-
-### 4. Environment Configuration
-
-Create a `.env` file in the backend directory:
-
-```env
-ANTHROPIC_API_KEY=your-anthropic-api-key
-```
-
-### 5. Run the Application
-
-#### Start Backend (Terminal 1)
-```bash
-cd backend
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-#### Start Frontend (Terminal 2)
-```bash
-cd frontend
 npm start
 ```
 
-### 6. Access the Application
+The frontend uses `/api` by default. Set `REACT_APP_API_URL` when the backend is
+hosted separately.
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
+## Train the model
 
-## 📊 Data Sources
+From the repository root:
 
-The application uses:
-1. **Public Datasets**: Attempts to load from public lead scoring datasets
-2. **Synthetic Data**: Generates realistic lead data if public data is unavailable
-3. **Custom Data**: Can be extended to use your own lead data
-
-## 🎯 Usage Guide
-
-### Dashboard
-- View key metrics and lead statistics
-- Analyze lead distribution by industry, source, and company size
-- Get AI-powered insights and recommendations
-
-### Lead Management
-- Browse all leads with pagination
-- Search leads by name, company, email, or industry
-- Select leads for AI scoring
-- View detailed lead information
-
-### AI Assistant
-- Ask natural language questions about your leads
-- Get AI-powered insights and analysis
-- Examples:
-  - "Which leads have the highest potential?"
-  - "What are the top industries in our database?"
-  - "Show me leads from the technology sector"
-  - "What lead sources are performing best?"
-
-### Lead Scoring
-- Select one or multiple leads
-- Click "Score Selected" to get AI-powered scores
-- View detailed explanations for each score
-- Scores range from 0-100 with confidence levels
-
-## 🔧 API Endpoints
-
-### Lead Management
-- `GET /api/leads` - Get paginated leads
-- `GET /api/leads/{id}` - Get specific lead
-- `GET /api/stats` - Get lead statistics
-
-### AI Features
-- `POST /api/score` - Score leads using AI
-- `POST /api/question` - Ask AI questions about leads
-
-### Health
-- `GET /api/health` - Health check
-
-## 🚀 Deployment
-
-### Backend Deployment (Heroku)
 ```bash
-# Create Procfile
-echo "web: uvicorn app.main:app --host 0.0.0.0 --port \$PORT" > Procfile
-
-# Deploy to Heroku
-heroku create your-app-name
-heroku config:set ANTHROPIC_API_KEY=your-api-key
-git push heroku main
+python3 backend/scripts/train_model.py
 ```
 
-### Frontend Deployment (Vercel)
+Training regenerates both the deployable model artifact and its JSON model card.
+The shared feature module is used by training and online inference to prevent
+schema drift.
+
+## Verification
+
 ```bash
-# Build the application
-npm run build
-
-# Deploy to Vercel
-vercel --prod
+PYTHONPATH=backend python3 -m unittest discover -s backend/tests -v
+npm --prefix frontend run build
 ```
 
-### Environment Variables for Production
-```env
-ANTHROPIC_API_KEY=your-anthropic-api-key
-REACT_APP_API_URL=https://your-backend-url.com/api
+The test suite covers dataset normalization, leakage exclusions, calibrated
+scoring, source-level TreeSHAP factors, cache invalidation, policy safety,
+analytics scope, health, and the end-to-end HTTP contract.
+
+## Repository structure
+
+```text
+backend/
+  app/
+    api/                   FastAPI routes
+    ml/                    Shared feature contract
+    services/              Data, scoring, policy, LLM, analytics, and cache
+  data/b2b/                Active B2B dataset and source documentation
+  models/                  Trained XGBoost artifact and model card
+  scripts/train_model.py   Reproducible training pipeline
+  tests/                   Service and HTTP contract tests
+frontend/
+  src/                     React dashboard and API client
+docs/
+  hybrid-architecture.md   Detailed current architecture
 ```
-
-## 🔒 Security Considerations
-
-- Store API keys securely using environment variables
-- Implement proper authentication for production use
-- Use HTTPS in production
-- Consider rate limiting for API endpoints
-- Validate and sanitize all user inputs
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📝 License
-
-This project is licensed under the MIT License.
-
-## 🆘 Support
-
-For support and questions:
-- Check the API documentation at `/docs`
-- Review the console logs for error details
-- Ensure your Anthropic API key is valid and has sufficient credits
-
-## 🔮 Future Enhancements
-
-- User authentication and authorization
-- Custom lead data import
-- Advanced filtering and segmentation
-- Email integration
-- CRM system integration
-- Advanced analytics and reporting
-- Multi-language support
-- Mobile application
-
----
-
-**Note**: This application uses Anthropic's Claude API which incurs costs based on usage. Monitor your API usage and set appropriate limits in your Anthropic account. 

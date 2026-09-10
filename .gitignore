@@ -16,6 +16,7 @@ backend/__pycache__/
 backend/*.pyc
 backend/*.pyo
 backend/*.pyd
+backend/scores.json
 
 # Node/React/Frontend
 node_modules/
