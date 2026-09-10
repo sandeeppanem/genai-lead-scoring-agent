@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 Starting GenAI Lead Scoring Assistant Frontend..."
+echo "🚀 Starting Hybrid B2B Opportunity Prioritization Frontend..."
 
 # Check if we're in the right directory
 if [ ! -f "frontend/package.json" ]; then
@@ -25,4 +25,4 @@ echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
 
-npm start 
+npm start

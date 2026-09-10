@@ -1,119 +1,88 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
-from datetime import datetime
+from typing import Any, Dict, List, Literal, Optional
 
-class Lead(BaseModel):
-    id: int
-    name: str
-    company: str
-    email: str
-    phone: Optional[str] = None
-    industry: str
-    company_size: Optional[str] = None
-    revenue: Optional[str] = None
-    lead_source: str
-    website: Optional[str] = None
-    location: Optional[str] = None
-    job_title: Optional[str] = None
-    created_date: Optional[datetime] = None
-    last_contact: Optional[datetime] = None
-    notes: Optional[str] = None
-    
-    # Additional real data fields
-    converted: Optional[int] = None
-    total_visits: Optional[int] = None
-    time_on_website: Optional[int] = None
-    page_views_per_visit: Optional[float] = None
-    last_activity: Optional[str] = None
-    lead_origin: Optional[str] = None
-    do_not_email: Optional[str] = None
-    do_not_call: Optional[str] = None
-    lead_quality: Optional[str] = None
-    lead_profile: Optional[str] = None
-    activity_score: Optional[int] = None
-    profile_score: Optional[int] = None
-    last_notable_activity: Optional[str] = None
-    tags: Optional[str] = None
-    how_heard: Optional[str] = None
-    occupation: Optional[str] = None
-    course_interest: Optional[str] = None
-    
-    # Additional marketing channel indicators
-    search: Optional[str] = None
-    magazine: Optional[str] = None
-    newspaper_article: Optional[str] = None
-    x_education_forums: Optional[str] = None
-    newspaper: Optional[str] = None
-    digital_advertisement: Optional[str] = None
-    through_recommendations: Optional[str] = None
-    receive_more_updates: Optional[str] = None
-    update_supply_chain: Optional[str] = None
-    update_dm_content: Optional[str] = None
-    agree_to_pay_cheque: Optional[str] = None
-    free_copy_interview: Optional[str] = None
-    
-    # NEW: Lead source type tracking
-    lead_source_type: Optional[str] = Field(
-        None, 
-        description="active (web form) or passive (discovered)"
-    )
-    discovery_source: Optional[str] = Field(
-        None,
-        description="Where passive lead was discovered (forum, website, etc.)"
-    )
-    research_report: Optional[str] = Field(
-        None,
-        description="Enrichment research report"
-    )
-    routing_decision: Optional[Dict[str, Any]] = Field(
-        None,
-        description="Routing decision after scoring"
-    )
+from pydantic import BaseModel, ConfigDict, Field
 
-class LeadScore(BaseModel):
-    lead_id: int
-    score: int = Field(..., ge=0, le=100)
-    explanation: str
-    confidence: float = Field(..., ge=0.0, le=1.0)
-    factors: List[str] = []
-    prefilled_data: Optional[Dict[str, Any]] = {}
 
-class LeadQuery(BaseModel):
-    question: str
-    lead_ids: Optional[List[int]] = None
+class Opportunity(BaseModel):
+    record_id: int
+    opportunity_number: str
+    supplies_subgroup: str
+    supplies_group: str
+    region: str
+    route_to_market: str
+    opportunity_amount_usd: float
+    client_size_by_revenue: int = Field(..., ge=1, le=5)
+    client_size_by_employee_count: int = Field(..., ge=1, le=5)
+    revenue_from_client_past_two_years: int = Field(..., ge=0, le=4)
+    competitor_type: str
+    deal_size_category: int = Field(..., ge=1, le=7)
+    outcome: Literal["Won", "Loss"]
 
-class LeadQueryResponse(BaseModel):
-    answer: str
-    sources: List[int] = []
 
-class LeadListResponse(BaseModel):
-    leads: List[Lead]
+class OpportunityListResponse(BaseModel):
+    opportunities: List[Opportunity]
     total: int
     page: int
     page_size: int
 
-class LeadScoreRequest(BaseModel):
-    lead_ids: List[int]
 
-class WebFormLead(BaseModel):
-    """Model for web form submissions (active leads)"""
-    name: str
-    email: str
-    company: str
-    job_title: Optional[str] = None
-    industry: Optional[str] = None
-    phone: Optional[str] = None
-    website: Optional[str] = None
-    message: Optional[str] = None
-    lead_source: str = "Web Form"
+class OpportunityScoreRequest(BaseModel):
+    record_ids: List[int] = Field(..., min_length=1, max_length=100)
 
-class DiscoveredLead(BaseModel):
-    """Model for discovered leads (passive)"""
-    name: str
-    email: Optional[str] = None
-    company: str
-    job_title: Optional[str] = None
-    industry: Optional[str] = None
-    website: Optional[str] = None
-    discovery_source: str  # e.g., "LinkedIn", "Industry Forum", "Company Website"
-    context: Optional[str] = None  # Where/how they were discovered 
+
+class ModelFactor(BaseModel):
+    feature: str
+    label: str
+    value: Any
+    direction: Literal["increases", "decreases"]
+    shap_value: float
+
+
+class RoutingDecision(BaseModel):
+    next_action: Literal["sales_review", "nurture", "low_priority"]
+    priority: Literal["high", "medium", "low"]
+    reason: str
+    automated_outreach_allowed: bool = False
+
+
+class OpportunityScore(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    record_id: int
+    opportunity_number: str
+    score: int = Field(..., ge=0, le=100)
+    probability: float = Field(..., ge=0.0, le=1.0)
+    explanation: str
+    factors: List[ModelFactor] = Field(default_factory=list)
+    explanation_method: str
+    routing: RoutingDecision
+    model_version: str
+    input_hash: str
+    scored_at: str
+
+
+class GroundedExplanation(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    record_id: int
+    opportunity_number: str
+    score: int = Field(..., ge=0, le=100)
+    probability: float = Field(..., ge=0.0, le=1.0)
+    factors: List[ModelFactor]
+    routing: RoutingDecision
+    model_version: str
+    explanation: str
+    missing_information: List[str]
+    generated_by: str
+
+
+class AnalyticsQuery(BaseModel):
+    question: str = Field(..., min_length=2, max_length=500)
+
+
+class AnalyticsResponse(BaseModel):
+    answer: str
+    population_size: int
+    filters: Dict[str, Any] = Field(default_factory=dict)
+    time_window: str
+    sources: List[int] = Field(default_factory=list)

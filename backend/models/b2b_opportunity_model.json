@@ -1,0 +1,129 @@
+{
+  "model_version": "b2b-win-xgb-v1-31afdb83aa46",
+  "model_type": "xgboost_with_platt_calibration",
+  "baseline_model": "logistic_regression_with_platt_calibration",
+  "explanation_method": "XGBoost native TreeSHAP contributions on raw margin",
+  "target": "opportunity_result_is_won",
+  "prediction_point": "opportunity qualification snapshot",
+  "dataset": {
+    "name": "IBM Watson Sales Win/Loss sample",
+    "rows_before_exact_deduplication": 78025,
+    "rows_used": 77970,
+    "source_sha256": "31afdb83aa46b54f62f5cdbfe1ccf00f395266254a0249c96ceef8522cc12b24"
+  },
+  "split": {
+    "strategy": "grouped_random_50_15_15_20_by_opportunity_number",
+    "warning": "The public sample has no event date; this is not a time-based test.",
+    "train_rows": 38980,
+    "validation_rows": 11698,
+    "calibration_rows": 11696,
+    "test_rows": 15596
+  },
+  "selection": {
+    "selected_max_depth": 4,
+    "validation_candidates": {
+      "max_depth_3": {
+        "records": 11698,
+        "win_rate": 0.222602,
+        "roc_auc": 0.800998,
+        "average_precision": 0.59033,
+        "brier_score": 0.131116,
+        "log_loss": 0.416848,
+        "precision_at_top_10_percent": 0.724786,
+        "lift_at_top_10_percent": 3.255972
+      },
+      "max_depth_4": {
+        "records": 11698,
+        "win_rate": 0.222602,
+        "roc_auc": 0.808671,
+        "average_precision": 0.602735,
+        "brier_score": 0.128891,
+        "log_loss": 0.410351,
+        "precision_at_top_10_percent": 0.731624,
+        "lift_at_top_10_percent": 3.286688
+      }
+    }
+  },
+  "features": [
+    "log_opportunity_amount_usd",
+    "client_size_by_revenue",
+    "client_size_by_employee_count",
+    "revenue_from_client_past_two_years",
+    "supplies_subgroup",
+    "supplies_group",
+    "region",
+    "route_to_market",
+    "competitor_type"
+  ],
+  "excluded_leakage_columns": [
+    "outcome",
+    "elapsed_days_in_sales_stage",
+    "sales_stage_change_count",
+    "total_days_identified_through_closing",
+    "total_days_identified_through_qualified",
+    "ratio_days_identified_to_total_days",
+    "ratio_days_validated_to_total_days",
+    "ratio_days_qualified_to_total_days",
+    "deal_size_category"
+  ],
+  "policy": {
+    "high_priority_threshold": 0.38303822,
+    "nurture_threshold": 0.14278074,
+    "high_priority_capacity": "top 20% of calibration opportunities"
+  },
+  "metrics": {
+    "xgboost": {
+      "development": {
+        "records": 50678,
+        "win_rate": 0.223351,
+        "roc_auc": 0.819298,
+        "average_precision": 0.617891,
+        "brier_score": 0.126743,
+        "log_loss": 0.402766,
+        "precision_at_top_10_percent": 0.737964,
+        "lift_at_top_10_percent": 3.304048
+      },
+      "calibration": {
+        "records": 11696,
+        "win_rate": 0.22777,
+        "roc_auc": 0.816257,
+        "average_precision": 0.613129,
+        "brier_score": 0.12983,
+        "log_loss": 0.410104,
+        "precision_at_top_10_percent": 0.731624,
+        "lift_at_top_10_percent": 3.212115
+      },
+      "test": {
+        "records": 15596,
+        "win_rate": 0.231918,
+        "roc_auc": 0.821477,
+        "average_precision": 0.621083,
+        "brier_score": 0.130283,
+        "log_loss": 0.410815,
+        "precision_at_top_10_percent": 0.739744,
+        "lift_at_top_10_percent": 3.189671
+      }
+    },
+    "logistic_regression_test_baseline": {
+      "records": 15596,
+      "win_rate": 0.231918,
+      "roc_auc": 0.719834,
+      "average_precision": 0.440668,
+      "brier_score": 0.158002,
+      "log_loss": 0.487544,
+      "precision_at_top_10_percent": 0.594231,
+      "lift_at_top_10_percent": 2.56224
+    }
+  },
+  "runtime": {
+    "python": "3.9.11",
+    "scikit_learn": "1.6.1",
+    "xgboost": "2.1.1"
+  },
+  "trained_at": "2026-09-10T15:09:50.780527+00:00",
+  "limitations": [
+    "The dataset contains no dates, notes, emails, or account identifiers.",
+    "Evaluation is duplicate-safe but not temporal.",
+    "This public sample validates architecture; production claims require timestamped company CRM snapshots."
+  ]
+}

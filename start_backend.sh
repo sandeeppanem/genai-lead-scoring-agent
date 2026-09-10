@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 Starting GenAI Lead Scoring Assistant Backend..."
+echo "🚀 Starting Hybrid B2B Opportunity Prioritization Backend..."
 
 # Check if we're in the right directory
 if [ ! -f "backend/requirements.txt" ]; then
@@ -40,4 +40,4 @@ echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
 
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

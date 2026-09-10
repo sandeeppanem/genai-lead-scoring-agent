@@ -1,47 +1,44 @@
+import os
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .api.routes import router
-import os
-from dotenv import load_dotenv
 
-# Load environment variables with explicit path
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
+load_dotenv()
 
-# Debug: Check if API key is loaded
-api_key = os.getenv("ANTHROPIC_API_KEY")
-print(f"Main.py Debug: API key loaded: {api_key[:20] if api_key and api_key != 'your-anthropic-api-key-here' else 'NOT_FOUND'}...")
+from .api.routes import router  # noqa: E402
 
-# Create FastAPI app
 app = FastAPI(
-    title="GenAI Lead Scoring Assistant",
-    description="AI-powered lead scoring and analysis API",
-    version="1.0.0",
+    title="Hybrid B2B Opportunity Prioritization",
+    description="Calibrated ML scoring with grounded GenAI explanations",
+    version="2.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
-# Add CORS middleware
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS", "http://localhost:3000"
+    ).split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend URL
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
-# Include API routes
 app.include_router(router, prefix="/api")
+
 
 @app.get("/")
 async def root():
-    """Root endpoint"""
     return {
-        "message": "GenAI Lead Scoring Assistant API",
-        "version": "1.0.0",
+        "message": "Hybrid B2B Opportunity Prioritization API",
+        "version": "2.0.0",
         "docs": "/docs",
-        "health": "/api/health"
+        "health": "/api/health",
     }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
