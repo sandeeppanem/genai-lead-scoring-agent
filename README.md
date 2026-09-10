@@ -30,13 +30,14 @@ The default dataset is the public IBM Watson Sales Win/Loss sample:
 - Public mirror and checksum documented in
   [backend/data/b2b/README.md](backend/data/b2b/README.md)
 
-The old X Education CSV remains in backend/data/leads.csv for provenance but is
-not loaded by the application.
-
 The IBM sample has no dates, account IDs, notes, or emails. Consequently, the
 evaluation keeps repeated opportunity numbers in one split but cannot be
 time-based. Treat the model as an architecture baseline, not a production
 performance claim.
+
+Only the active B2B source dataset is tracked. Generated score-cache data and
+the retired education prototype dataset are intentionally excluded from the
+repository.
 
 ## Model
 

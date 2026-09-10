@@ -1,1 +1,1 @@
-# GenAI Lead Scoring Assistant Backend 
+"""Hybrid B2B opportunity prioritization backend."""

@@ -15,7 +15,6 @@ defensible “won within N days” target; production data must add `scored_at`,
 
 | Dataset | Domain | Size | Honest evaluation | Decision |
 | --- | --- | ---: | --- | --- |
-| X Education | Education enrollment | 9,240 | Leakage-screened random test ROC-AUC ~0.86 | Preserve, but retire from the B2B UI |
 | Maven CRM opportunities | Simulated B2B hardware sales | 8,800 | Out-of-time ROC-AUC ~0.53 in our leakage-screened benchmark | Do not use as the primary model |
 | IBM Watson Sales Win/Loss | B2B opportunity outcomes | 78,025 | Grouped XGBoost test ROC-AUC 0.8215; top-decile lift 3.19x | Use for the architecture baseline |
 
