@@ -20,12 +20,10 @@ import {
   Typography,
 } from '@mui/material';
 import {
-  DeleteOutline as DeleteIcon,
   Refresh as RefreshIcon,
   Score as ScoreIcon,
 } from '@mui/icons-material';
 import {
-  clearScores,
   getOpportunities,
   getScores,
   scoreOpportunities,
@@ -100,11 +98,6 @@ const LeadTable = () => {
     }
   };
 
-  const clearCache = async () => {
-    await clearScores();
-    setScores({});
-  };
-
   const factorTooltip = (score) => (
     <Box sx={{ maxWidth: 420 }}>
       <Typography variant="body2">{score.explanation}</Typography>
@@ -139,9 +132,6 @@ const LeadTable = () => {
         </Button>
         <Tooltip title="Refresh">
           <IconButton onClick={load}><RefreshIcon /></IconButton>
-        </Tooltip>
-        <Tooltip title="Clear current-model score cache">
-          <IconButton onClick={clearCache}><DeleteIcon /></IconButton>
         </Tooltip>
       </Box>
 

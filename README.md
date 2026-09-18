@@ -153,7 +153,10 @@ The calibration population determines two routing thresholds:
 Automated outreach is disabled for every route. The optional LLM endpoint uses
 a typed response envelope: score, probability, TreeSHAP factors, model version,
 and routing are copied from verified application services. Only the explanation
-and missing-information narrative can be language-generated.
+and missing-information narrative can be language-generated. LLM explanations
+are disabled by default so a public deployment cannot spend API credits. Enable
+them only on a protected deployment by setting `ENABLE_LLM_EXPLANATIONS=true`
+and keeping `ANTHROPIC_API_KEY` in the backend host's secret environment.
 
 ## Conversational analytics
 
@@ -182,7 +185,6 @@ record IDs when applicable, and the available time-window description.
 | `POST` | `/api/question` | Verified conversational analytics |
 | `GET` | `/api/stats` | Portfolio aggregates |
 | `GET` | `/api/scores` | Current-model cached scores |
-| `DELETE` | `/api/scores` | Clear the local score cache |
 | `GET` | `/api/health` | Data, ML model, and optional LLM health |
 
 Example batch score request:
@@ -206,8 +208,10 @@ uvicorn app.main:app --app-dir backend --reload --port 8000
 
 The scoring and analytics paths do not require an LLM key. To enable generated
 explanations, copy `backend/env.example` to `backend/.env` and set
-`ANTHROPIC_API_KEY`. CORS origins can be configured with
-`CORS_ALLOWED_ORIGINS`.
+`ANTHROPIC_API_KEY` and `ENABLE_LLM_EXPLANATIONS=true`. CORS origins can be
+configured with `CORS_ALLOWED_ORIGINS`. Never use an `ANTHROPIC_API_KEY` or any
+other secret in a `REACT_APP_*` variable: Create React App embeds those values
+in the downloadable browser bundle.
 
 ### Frontend
 
@@ -219,6 +223,45 @@ npm start
 
 The frontend uses `/api` by default. Set `REACT_APP_API_URL` when the backend is
 hosted separately.
+
+## Deployment
+
+The hosted application uses two services:
+
+- Vercel builds the React application from `frontend/`.
+- Render runs the FastAPI application with
+  `uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT`.
+
+`frontend/.env.production` points Vercel builds at the Render API. The backend
+allows localhost plus deployment URLs belonging to this project's Vercel name;
+override `CORS_ALLOWED_ORIGINS` or `CORS_ALLOWED_ORIGIN_REGEX` when using a
+different domain.
+
+The frontend and backend must be deployed from the same revision. Verify a
+deployment before testing the UI:
+
+```bash
+curl https://genai-lead-scoring-agent.onrender.com/api/health
+curl https://genai-lead-scoring-agent.onrender.com/api/model
+```
+
+The health response should report 77,970 data records and an operational ML
+model. A `404` from `/api/model` means Render is still running the retired lead
+API and must be redeployed from the current `master` branch.
+
+For anonymous access, share the public production domain:
+`https://genai-lead-scoring-agent.vercel.app/`. Deployment-specific preview
+URLs can remain protected by Vercel Authentication and should not be used as
+the public link. If the production domain is ever protected, limit any change
+under the project's Deployment Protection settings to production access rather
+than making private previews public.
+
+The public frontend contains only the Render API URL. Keep
+`ENABLE_LLM_EXPLANATIONS=false` on the public backend and remove
+`ANTHROPIC_API_KEY` from that Render service. The scoring and verified analytics
+paths remain fully functional without it. The public API does not expose a cache
+deletion operation, and scoring requests are capped at the 20 records visible on
+one UI page.
 
 ## Train the model
 

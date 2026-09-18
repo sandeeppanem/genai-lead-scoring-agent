@@ -122,12 +122,6 @@ async def get_scores():
     }
 
 
-@router.delete("/scores", response_model=dict)
-async def clear_scores():
-    scoring_service.score_storage.clear_scores()
-    return {"message": "Score cache cleared"}
-
-
 @router.get("/health", response_model=dict)
 async def health_check():
     ready = data_service.record_count > 0 and scoring_service.is_ready
@@ -145,7 +139,13 @@ async def health_check():
                 "error": scoring_service.load_error,
             },
             "llm_explanation": {
-                "status": "operational" if llm_service.is_ready else "optional_unconfigured"
+                "status": (
+                    "operational"
+                    if llm_service.is_ready
+                    else "unconfigured"
+                    if llm_service.enabled
+                    else "disabled"
+                )
             },
         },
     }

@@ -23,11 +23,16 @@ allowed_origins = [
     ).split(",")
     if origin.strip()
 ]
+allowed_origin_regex = os.getenv(
+    "CORS_ALLOWED_ORIGIN_REGEX",
+    r"^https://genai-lead-scoring-agent(?:-[a-z0-9-]+)?\.vercel\.app$",
+).strip() or None
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=allowed_origin_regex,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],
 )
 
