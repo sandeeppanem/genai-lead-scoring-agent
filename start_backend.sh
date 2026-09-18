@@ -25,10 +25,10 @@ source venv/bin/activate
 echo "📥 Installing dependencies..."
 pip install -r requirements.txt
 
-# Check if .env file exists
+# LLM explanations are optional and disabled by default. No API key is needed
+# for scoring, deterministic explanations, or verified analytics.
 if [ ! -f ".env" ]; then
-    echo "⚠️  Warning: .env file not found. Please create one with your Anthropic API key."
-    echo "   Copy env.example to .env and add your ANTHROPIC_API_KEY"
+    echo "ℹ️  No backend .env found; using the safe deterministic defaults."
 fi
 
 # Start the server
