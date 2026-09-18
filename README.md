@@ -249,10 +249,12 @@ The health response should report 77,970 data records and an operational ML
 model. A `404` from `/api/model` means Render is still running the retired lead
 API and must be redeployed from the current `master` branch.
 
-For anonymous access, use the Vercel production domain and turn off Vercel
-Authentication for the applicable production deployment under the project's
-Deployment Protection settings. Preview deployments can remain protected. This
-is an account-level setting and is intentionally not stored in this repository.
+For anonymous access, share the public production domain:
+`https://genai-lead-scoring-agent.vercel.app/`. Deployment-specific preview
+URLs can remain protected by Vercel Authentication and should not be used as
+the public link. If the production domain is ever protected, limit any change
+under the project's Deployment Protection settings to production access rather
+than making private previews public.
 
 The public frontend contains only the Render API URL. Keep
 `ENABLE_LLM_EXPLANATIONS=false` on the public backend and remove
