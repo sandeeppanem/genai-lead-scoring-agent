@@ -18,7 +18,6 @@ export const scoreOpportunities = async (recordIds) => (
 ).data;
 
 export const getScores = async () => (await api.get('/scores')).data;
-export const clearScores = async () => (await api.delete('/scores')).data;
 export const getStatistics = async () => (await api.get('/stats')).data;
 export const getModelCard = async () => (await api.get('/model')).data;
 export const healthCheck = async () => (await api.get('/health')).data;

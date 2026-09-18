@@ -29,6 +29,7 @@ frontend/.env.local
 .env
 .env.*
 !.env.example
+!frontend/.env.production
 
 # VSCode/IDE
 .vscode/

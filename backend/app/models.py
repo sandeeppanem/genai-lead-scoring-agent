@@ -27,7 +27,7 @@ class OpportunityListResponse(BaseModel):
 
 
 class OpportunityScoreRequest(BaseModel):
-    record_ids: List[int] = Field(..., min_length=1, max_length=100)
+    record_ids: List[int] = Field(..., min_length=1, max_length=20)
 
 
 class ModelFactor(BaseModel):

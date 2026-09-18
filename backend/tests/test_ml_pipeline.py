@@ -1,12 +1,14 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 
 from app.ml.features import FEATURE_COLUMNS, LEAKAGE_COLUMNS, normalize_sales_data
 from app.services.analytics_service import AnalyticsService
 from app.services.data_service import DataService
+from app.services.llm_service import LLMService
 from app.services.ml_scoring_service import MLScoringService
 from app.services.score_storage import ScoreStorage
 
@@ -70,12 +72,46 @@ class HybridPipelineTest(unittest.TestCase):
             "Which routes to market have the best win rate?"
         )
         self.assertEqual(result["population_size"], 77_970)
+        self.assertEqual(result["filters"], {})
+        self.assertIn("Reseller: 27.6% (9578/34738)", result["answer"])
         self.assertIn("Computed over 77,970 opportunities", result["answer"])
         self.assertIn("no dates", result["time_window"])
+
+    def test_analytics_applies_multiple_verified_filters(self):
+        result = AnalyticsService(self.data_service).answer(
+            "What is the win rate for Telecoverage in Midwest?"
+        )
+        self.assertEqual(
+            result["filters"],
+            {"region": "Midwest", "route_to_market": "Telecoverage"},
+        )
+        self.assertEqual(result["population_size"], 102)
+        self.assertIn("12 won and 90 lost", result["answer"])
+
+    def test_analytics_returns_source_ids_for_ranked_records(self):
+        result = AnalyticsService(self.data_service).answer(
+            "What are the highest-value opportunities in Midwest?"
+        )
+        self.assertEqual(result["filters"], {"region": "Midwest"})
+        self.assertEqual(result["population_size"], 21_013)
+        self.assertEqual(result["sources"], [155, 162, 413, 2868, 4571])
 
     def test_normalizer_rejects_incomplete_schema(self):
         with self.assertRaises(ValueError):
             normalize_sales_data(pd.DataFrame({"Opportunity Result": ["Won"]}))
+
+    def test_llm_is_disabled_by_default_even_when_a_key_exists(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "ANTHROPIC_API_KEY": "server-side-test-value",
+                "ENABLE_LLM_EXPLANATIONS": "false",
+            },
+        ):
+            service = LLMService()
+
+        self.assertFalse(service.enabled)
+        self.assertFalse(service.is_ready)
 
 
 if __name__ == "__main__":

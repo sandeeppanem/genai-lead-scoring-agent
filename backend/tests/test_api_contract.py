@@ -64,6 +64,33 @@ class APIContractTest(unittest.TestCase):
         self.assertEqual(explanation.json()["generated_by"], "deterministic_fallback")
         self.assertEqual(analytics.json()["population_size"], 77_970)
 
+    def test_vercel_deployment_origin_is_allowed(self):
+        origin = (
+            "https://genai-lead-scoring-agent-ncucysak8-"
+            "sandeeppanems-projects.vercel.app"
+        )
+        response = self.client.options(
+            "/api/stats",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.headers["access-control-allow-origin"], origin)
+
+    def test_public_api_has_no_cache_delete_operation(self):
+        response = self.client.delete("/api/scores")
+        self.assertEqual(response.status_code, 405, response.text)
+
+    def test_public_scoring_batch_is_limited_to_one_page(self):
+        response = self.client.post(
+            "/api/opportunities/score",
+            json={"record_ids": list(range(1, 22))},
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+
 
 if __name__ == "__main__":
     unittest.main()

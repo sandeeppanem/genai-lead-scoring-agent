@@ -19,8 +19,15 @@ class LLMService:
         self.model = os.getenv(
             "ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"
         )
+        self.enabled = os.getenv(
+            "ENABLE_LLM_EXPLANATIONS", "false"
+        ).strip().casefold() in {"1", "true", "yes"}
         api_key = os.getenv("ANTHROPIC_API_KEY")
-        if api_key and api_key != "your-anthropic-api-key-here":
+        if (
+            self.enabled
+            and api_key
+            and api_key != "your-anthropic-api-key-here"
+        ):
             self.client = Anthropic(api_key=api_key)
 
     @property
