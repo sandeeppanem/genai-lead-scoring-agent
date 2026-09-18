@@ -80,6 +80,22 @@ class APIContractTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.headers["access-control-allow-origin"], origin)
 
+    def test_local_development_origins_are_allowed(self):
+        for origin in ("http://localhost:3000", "http://127.0.0.1:3000"):
+            with self.subTest(origin=origin):
+                response = self.client.options(
+                    "/api/stats",
+                    headers={
+                        "Origin": origin,
+                        "Access-Control-Request-Method": "GET",
+                    },
+                )
+
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(
+                    response.headers["access-control-allow-origin"], origin
+                )
+
     def test_public_api_has_no_cache_delete_operation(self):
         response = self.client.delete("/api/scores")
         self.assertEqual(response.status_code, 405, response.text)
