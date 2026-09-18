@@ -64,11 +64,8 @@ class APIContractTest(unittest.TestCase):
         self.assertEqual(explanation.json()["generated_by"], "deterministic_fallback")
         self.assertEqual(analytics.json()["population_size"], 77_970)
 
-    def test_vercel_deployment_origin_is_allowed(self):
-        origin = (
-            "https://genai-lead-scoring-agent-ncucysak8-"
-            "sandeeppanems-projects.vercel.app"
-        )
+    def test_vercel_production_origin_is_allowed(self):
+        origin = "https://genai-lead-scoring-agent.vercel.app"
         response = self.client.options(
             "/api/stats",
             headers={
