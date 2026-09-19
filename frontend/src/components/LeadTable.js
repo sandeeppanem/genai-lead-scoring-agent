@@ -20,6 +20,7 @@ import {
   Typography,
 } from '@mui/material';
 import {
+  AddComment as AddCommentIcon,
   Refresh as RefreshIcon,
   Score as ScoreIcon,
 } from '@mui/icons-material';
@@ -42,7 +43,11 @@ const scoreColor = (score) => {
   return 'default';
 };
 
-const LeadTable = ({ selected = [], onSelectionChange = () => {} }) => {
+const LeadTable = ({
+  selected = [],
+  onSelectionChange = () => {},
+  onCreateInquiry = () => {},
+}) => {
   const [opportunities, setOpportunities] = useState([]);
   const [scores, setScores] = useState({});
   const [page, setPage] = useState(1);
@@ -53,6 +58,12 @@ const LeadTable = ({ selected = [], onSelectionChange = () => {} }) => {
   const [error, setError] = useState(null);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total]);
+  const selectedOpportunity = useMemo(
+    () => (selected.length === 1
+      ? opportunities.find((item) => item.record_id === selected[0]) || null
+      : null),
+    [opportunities, selected],
+  );
 
   const load = async () => {
     setLoading(true);
@@ -129,6 +140,18 @@ const LeadTable = ({ selected = [], onSelectionChange = () => {} }) => {
         >
           Score selected ({selected.length})
         </Button>
+        <Tooltip title={selected.length > 1 ? 'Select exactly one opportunity' : ''}>
+          <span>
+            <Button
+              variant="outlined"
+              startIcon={<AddCommentIcon />}
+              disabled={!selectedOpportunity}
+              onClick={() => onCreateInquiry(selectedOpportunity)}
+            >
+              Create inquiry
+            </Button>
+          </span>
+        </Tooltip>
         <Tooltip title="Refresh">
           <IconButton onClick={load}><RefreshIcon /></IconButton>
         </Tooltip>

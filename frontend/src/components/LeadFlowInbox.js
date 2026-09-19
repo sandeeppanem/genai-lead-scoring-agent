@@ -71,7 +71,12 @@ const DecisionCard = ({ icon, eyebrow, title, color, children }) => (
   </Card>
 );
 
-const LeadFlowInbox = ({ selectedIds, onSelectionChange, refreshToken = 0 }) => {
+const LeadFlowInbox = ({
+  selectedIds,
+  onSelectionChange,
+  refreshToken = 0,
+  draftOpportunity = null,
+}) => {
   const [items, setItems] = useState([]);
   const [counts, setCounts] = useState({});
   const [activeId, setActiveId] = useState(null);
@@ -118,6 +123,12 @@ const LeadFlowInbox = ({ selectedIds, onSelectionChange, refreshToken = 0 }) => 
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [action, status, refreshToken]);
+
+  useEffect(() => {
+    if (!draftOpportunity?.record_id) return;
+    setRecordId(String(draftOpportunity.record_id));
+    setComposerOpen(true);
+  }, [draftOpportunity]);
 
   const create = async () => {
     if (!recordId || !inquiryText.trim()) return;
@@ -173,6 +184,15 @@ const LeadFlowInbox = ({ selectedIds, onSelectionChange, refreshToken = 0 }) => 
 
       {composerOpen && (
         <Paper variant="outlined" sx={{ p: 2.5, mb: 2.5, borderRadius: 3 }}>
+          {draftOpportunity?.record_id === Number(recordId) && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Creating an inquiry for opportunity #{draftOpportunity.opportunity_number}
+              {' · '}{draftOpportunity.supplies_subgroup}
+              {' · '}{draftOpportunity.region}
+              {' · '}{draftOpportunity.route_to_market}
+              {' · '}Record {draftOpportunity.record_id}
+            </Alert>
+          )}
           <Grid container spacing={2} alignItems="flex-start">
             <Grid item xs={12} md={2}>
               <TextField

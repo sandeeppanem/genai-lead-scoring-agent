@@ -57,6 +57,7 @@ function App() {
   const [selectedRecordIds, setSelectedRecordIds] = useState([]);
   const [selectedInquiryIds, setSelectedInquiryIds] = useState([]);
   const [queueRefreshToken, setQueueRefreshToken] = useState(0);
+  const [leadFlowDraftOpportunity, setLeadFlowDraftOpportunity] = useState(null);
 
   const loadDashboard = async () => {
     setLoading(true);
@@ -93,12 +94,17 @@ function App() {
       key="opportunities"
       selected={selectedRecordIds}
       onSelectionChange={setSelectedRecordIds}
+      onCreateInquiry={(opportunity) => {
+        setLeadFlowDraftOpportunity(opportunity);
+        setCurrentTab(2);
+      }}
     />,
     <LeadFlowInbox
       key="leadflow"
       selectedIds={selectedInquiryIds}
       onSelectionChange={setSelectedInquiryIds}
       refreshToken={queueRefreshToken}
+      draftOpportunity={leadFlowDraftOpportunity}
     />,
     <AIChat key="analytics" />,
   ][currentTab];
