@@ -180,11 +180,18 @@ class APIContractTest(unittest.TestCase):
         )
         self.assertEqual(preview.status_code, 200, preview.text)
         self.assertTrue(preview.json()["requires_confirmation"])
-        confirmation = self.client.post(
-            "/api/commands/confirm",
-            json={"confirmation_id": preview.json()["confirmation_id"]},
-        )
+        original_mode = routes.jev_service.mode
+        routes.jev_service.mode = "gateway"
+        try:
+            confirmation = self.client.post(
+                "/api/commands/confirm",
+                json={"confirmation_id": preview.json()["confirmation_id"]},
+            )
+        finally:
+            routes.jev_service.mode = original_mode
         self.assertEqual(confirmation.status_code, 200, confirmation.text)
+        self.assertEqual(confirmation.json()["provider_mode"], "live")
+        self.assertEqual(confirmation.json()["model"], "typesafe-ai/jev")
         self.assertEqual(confirmation.json()["result"]["status"], "reviewed")
 
 

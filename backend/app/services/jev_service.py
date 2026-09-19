@@ -71,6 +71,11 @@ class JevService:
             return "typesafe-ai/jev"
         return "demo-rules-v1"
 
+    @property
+    def public_provider_mode(self) -> str:
+        """Expose transport-backed decisions as live without leaking transport names."""
+        return "demo" if self.mode == "demo" else "live"
+
     def classify_inquiry(
         self, inquiry_text: str, product_groups: List[str]
     ) -> Dict[str, Any]:

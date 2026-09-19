@@ -123,7 +123,7 @@ class CommandService:
                 f"{result['status'].replace('_', ' ')}."
             ),
             "result": result,
-            "provider_mode": self.jev_service.mode,
+            "provider_mode": self.jev_service.public_provider_mode,
             "model": self.jev_service.model_identity,
         }
 
