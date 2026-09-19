@@ -1,40 +1,85 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from ..models import (
+    ActionQueueResponse,
     AnalyticsQuery,
     AnalyticsResponse,
+    CommandConfirmationRequest,
+    CommandRequest,
+    CommandResponse,
     GroundedExplanation,
+    InquiryCreateRequest,
+    InquiryRecord,
+    InquiryStatusRequest,
     Opportunity,
     OpportunityListResponse,
     OpportunityScore,
     OpportunityScoreRequest,
 )
 from ..services.analytics_service import AnalyticsService
+from ..services.command_service import CommandService
 from ..services.data_service import DataService
+from ..services.inquiry_service import InquiryService
+from ..services.jev_service import JevService, JevUnavailableError
+from ..services.leadflow_service import LeadFlowService
 from ..services.llm_service import LLMService
 from ..services.ml_scoring_service import MLScoringService
+from ..services.rate_limit_service import PublicRateLimitService
+from ..services.workflow_policy_service import WorkflowPolicyService
 
 router = APIRouter()
 data_service = DataService()
 scoring_service = MLScoringService()
 analytics_service = AnalyticsService(data_service)
 llm_service = LLMService()
+inquiry_service = InquiryService()
+jev_service = JevService()
+workflow_policy = WorkflowPolicyService()
+leadflow_service = LeadFlowService(
+    data_service,
+    scoring_service,
+    inquiry_service,
+    jev_service,
+    workflow_policy,
+)
+command_service = CommandService(
+    data_service,
+    scoring_service,
+    analytics_service,
+    llm_service,
+    inquiry_service,
+    leadflow_service,
+    jev_service,
+)
+public_rate_limiter = PublicRateLimitService()
+
+
+def _enforce_public_write_limit(request: Request) -> None:
+    client_key = request.client.host if request.client else "unknown"
+    if not public_rate_limiter.allow(client_key or "unknown"):
+        raise HTTPException(
+            status_code=429,
+            detail="Anonymous write rate limit reached; try again in a minute.",
+            headers={"Retry-After": "60"},
+        )
 
 
 @router.get("/", response_model=dict)
 async def root():
     return {
         "message": "Hybrid B2B Opportunity Prioritization API",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "score_owner": "calibrated_xgboost",
         "endpoints": {
             "opportunities": "/api/opportunities",
             "score": "/api/opportunities/score",
             "model": "/api/model",
             "analytics": "/api/question",
+            "action_queue": "/api/action-queue",
+            "commands": "/api/commands",
             "stats": "/api/stats",
         },
     }
@@ -103,6 +148,105 @@ async def ask_question(request: AnalyticsQuery):
     return AnalyticsResponse(**analytics_service.answer(request.question))
 
 
+@router.post("/inquiries", response_model=InquiryRecord, status_code=201)
+async def create_inquiry(payload: InquiryCreateRequest, request: Request):
+    _enforce_public_write_limit(request)
+    try:
+        return InquiryRecord(
+            **leadflow_service.create_inquiry(payload.record_id, payload.inquiry_text)
+        )
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except JevUnavailableError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@router.get("/inquiries/{inquiry_id}", response_model=InquiryRecord)
+async def get_inquiry(inquiry_id: int):
+    try:
+        return InquiryRecord(**leadflow_service.get_inquiry(inquiry_id))
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.post("/inquiries/{inquiry_id}/status", response_model=InquiryRecord)
+async def update_inquiry_status(
+    inquiry_id: int, payload: InquiryStatusRequest, request: Request
+):
+    _enforce_public_write_limit(request)
+    try:
+        return InquiryRecord(
+            **leadflow_service.update_status([inquiry_id], payload.status)[0]
+        )
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.get("/action-queue", response_model=ActionQueueResponse)
+async def get_action_queue(
+    action: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    priority: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=100),
+):
+    allowed_actions = {
+        "quote_request",
+        "qualification",
+        "nurture",
+        "support",
+        "do_not_contact",
+        "human_review",
+    }
+    allowed_statuses = {"new", "in_review", "reviewed", "resolved"}
+    allowed_priorities = {"urgent", "high", "medium", "low"}
+    if action and action not in allowed_actions:
+        raise HTTPException(status_code=422, detail="Unsupported action queue")
+    if status and status not in allowed_statuses:
+        raise HTTPException(status_code=422, detail="Unsupported workflow status")
+    if priority and priority not in allowed_priorities:
+        raise HTTPException(status_code=422, detail="Unsupported workflow priority")
+    try:
+        return ActionQueueResponse(
+            **leadflow_service.list_queue(action, status, priority, limit)
+        )
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.post("/commands", response_model=CommandResponse)
+async def execute_command(payload: CommandRequest, request: Request):
+    _enforce_public_write_limit(request)
+    try:
+        return CommandResponse(
+            **command_service.execute(
+                payload.command,
+                payload.selected_record_ids,
+                payload.selected_inquiry_ids,
+            )
+        )
+    except JevUnavailableError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@router.post("/commands/confirm", response_model=CommandResponse)
+async def confirm_command(
+    payload: CommandConfirmationRequest, request: Request
+):
+    _enforce_public_write_limit(request)
+    try:
+        return CommandResponse(**command_service.confirm(payload.confirmation_id))
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
 @router.get("/stats", response_model=dict)
 async def get_statistics():
     return data_service.get_statistics()
@@ -146,6 +290,19 @@ async def health_check():
                     if llm_service.enabled
                     else "disabled"
                 )
+            },
+            "leadflow_store": {
+                "status": "operational" if inquiry_service.is_ready else "unavailable"
+            },
+            "public_write_guard": {
+                "status": "operational",
+                "requests_per_minute": public_rate_limiter.limit,
+            },
+            "jev_decisions": {
+                "status": "operational" if jev_service.is_ready else "unconfigured",
+                "mode": jev_service.mode,
+                "model": jev_service.model_identity,
+                "demo": jev_service.mode == "demo",
             },
         },
     }

@@ -25,6 +25,34 @@ class AnalyticsService:
     def answer(self, question: str) -> Dict[str, Any]:
         text = question.casefold()
         filters = self._extract_filters(text)
+        if any(word in text for word in ("highest", "largest", "biggest")) and any(
+            word in text for word in ("amount", "value", "deal", "opportunit")
+        ):
+            return self.execute("highest_value", filters=filters)
+
+        dimension, label = self._requested_dimension(text)
+        if dimension:
+            return self.execute(
+                "observed_win_rate", dimension=dimension, filters=filters, label=label
+            )
+
+        return self.execute("portfolio_summary", filters=filters)
+
+    def execute(
+        self,
+        operation: str,
+        *,
+        dimension: str = "",
+        filters: Dict[str, str] = None,
+        label: str = "",
+    ) -> Dict[str, Any]:
+        """Execute a structured allow-listed analytical operation."""
+        filters = filters or {}
+        supported_filters = {
+            "region", "route_to_market", "supplies_group", "competitor_type"
+        }
+        if not set(filters).issubset(supported_filters):
+            raise ValueError("Unsupported analytics filter")
         frame = self.data_service.filtered_frame(filters)
         population_size = int(len(frame))
         time_window = "Single source reporting period; the dataset provides no dates."
@@ -36,26 +64,48 @@ class AnalyticsService:
                 "filters": filters,
                 "time_window": time_window,
                 "sources": [],
+                "operation": operation,
+                "rows": [],
             }
 
-        if any(word in text for word in ("highest", "largest", "biggest")) and any(
-            word in text for word in ("amount", "value", "deal", "opportunit")
-        ):
+        if operation == "highest_value":
             top = frame.nlargest(5, "opportunity_amount_usd")
             values = [
                 f"#{row.record_id} (${row.opportunity_amount_usd:,.0f}, {row.region}, {row.route_to_market})"
                 for row in top.itertuples()
             ]
-            return self._response(
+            response = self._response(
                 f"Highest-value opportunities: {', '.join(values)}.",
                 frame,
                 filters,
                 time_window,
                 top["record_id"].astype(int).tolist(),
             )
+            response.update(
+                {
+                    "operation": operation,
+                    "rows": [
+                        {
+                            "record_id": int(row.record_id),
+                            "amount_usd": float(row.opportunity_amount_usd),
+                            "region": str(row.region),
+                            "route_to_market": str(row.route_to_market),
+                        }
+                        for row in top.itertuples()
+                    ],
+                }
+            )
+            return response
 
-        dimension, label = self._requested_dimension(text)
-        if dimension:
+        if operation == "observed_win_rate":
+            allowed_dimensions = {
+                "region": "regions",
+                "route_to_market": "routes to market",
+                "supplies_group": "product groups",
+                "competitor_type": "competitor statuses",
+            }
+            if dimension not in allowed_dimensions:
+                raise ValueError("A supported grouping dimension is required")
             summary = (
                 frame.groupby(dimension, dropna=False)
                 .agg(
@@ -70,15 +120,32 @@ class AnalyticsService:
                 ["win_rate", "opportunities"], ascending=[False, False]
             )
             rows = [
-                f"{row[dimension]}: {row.win_rate * 100:.1f}% "
-                f"({int(row.wins)}/{int(row.opportunities)})"
-                for _, row in summary.head(5).iterrows()
+                {
+                    "value": str(row[dimension]),
+                    "opportunities": int(row.opportunities),
+                    "wins": int(row.wins),
+                    "win_rate": round(float(row.win_rate) * 100, 2),
+                    "average_amount_usd": round(float(row.average_amount), 2),
+                }
+                for _, row in summary.iterrows()
+            ]
+            text_rows = [
+                f"{row['value']}: {row['win_rate']:.1f}% "
+                f"({row['wins']}/{row['opportunities']})"
+                for row in rows[:5]
             ]
             answer = (
-                f"Top {label} by observed win rate: {'; '.join(rows)}. "
-                f"Computed over {population_size:,} opportunities."
+                f"Top {label or allowed_dimensions[dimension]} by observed win rate: "
+                f"{'; '.join(text_rows)}. Computed over {population_size:,} opportunities."
             )
-            return self._response(answer, frame, filters, time_window)
+            response = self._response(answer, frame, filters, time_window)
+            response.update(
+                {"operation": operation, "dimension": dimension, "rows": rows}
+            )
+            return response
+
+        if operation != "portfolio_summary":
+            raise ValueError("Unsupported analytics operation")
 
         wins = int(frame["target"].sum())
         answer = (
@@ -87,7 +154,21 @@ class AnalyticsService:
             f"({wins / population_size * 100:.1f}% observed win rate). "
             "Ask for win rate by region, route to market, product group, or competitor status."
         )
-        return self._response(answer, frame, filters, time_window)
+        response = self._response(answer, frame, filters, time_window)
+        response.update(
+            {
+                "operation": operation,
+                "rows": [
+                    {
+                        "opportunities": population_size,
+                        "wins": wins,
+                        "losses": population_size - wins,
+                        "win_rate": round(wins / population_size * 100, 2),
+                    }
+                ],
+            }
+        )
+        return response
 
     def _requested_dimension(self, text: str) -> Tuple[str, str]:
         for keyword, definition in self.DIMENSIONS.items():

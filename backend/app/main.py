@@ -9,9 +9,9 @@ load_dotenv()
 from .api.routes import router  # noqa: E402
 
 app = FastAPI(
-    title="Hybrid B2B Opportunity Prioritization",
-    description="Calibrated ML scoring with grounded GenAI explanations",
-    version="2.0.0",
+    title="LeadFlow: Calibrated ML Scoring + Jev Intent-to-Action Workflows",
+    description="Calibrated opportunity scoring, semantic workflow decisions, and approved CRM tools",
+    version="3.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -26,7 +26,10 @@ allowed_origins = [
 ]
 allowed_origin_regex = os.getenv(
     "CORS_ALLOWED_ORIGIN_REGEX",
-    r"^https://genai-lead-scoring-agent(?:-[a-z0-9-]+)?\.vercel\.app$",
+    (
+        r"^(?:http://(?:localhost|127\.0\.0\.1):[0-9]+|"
+        r"https://genai-lead-scoring-agent(?:-[a-z0-9-]+)?\.vercel\.app)$"
+    ),
 ).strip() or None
 app.add_middleware(
     CORSMiddleware,
@@ -44,7 +47,7 @@ app.include_router(router, prefix="/api")
 async def root():
     return {
         "message": "Hybrid B2B Opportunity Prioritization API",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "docs": "/docs",
         "health": "/api/health",
     }
