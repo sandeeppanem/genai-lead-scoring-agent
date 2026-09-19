@@ -1,9 +1,10 @@
-# Hybrid ML + GenAI B2B Opportunity Prioritization
+# LeadFlow: Calibrated ML Scoring + Jev Intent-to-Action Workflows
 
-A full-stack sales-prioritization system that ranks B2B opportunities by their
-calibrated probability of closing as won. XGBoost owns the score, TreeSHAP
-provides model-grounded factors, deterministic policy code selects the next
-action, and an optional LLM turns verified evidence into a concise narrative.
+A full-stack sales workflow that combines calibrated B2B opportunity scoring,
+Jev-backed inquiry classification, deterministic action queues, and a
+constrained natural-language CRM command bar. XGBoost owns the win score,
+TreeSHAP provides model-grounded factors, Jev supplies semantic judgments, and
+application policy owns every workflow action and write.
 
 ## What the system solves
 
@@ -27,6 +28,28 @@ The application provides:
   do-not-contact, and human-review queues
 - A confirmation-gated CRM command bar backed by an allow-listed tool registry
 
+## Current implementation status
+
+The requested local MVP is implemented end to end. The current branch has been
+verified with 22 backend tests, five Gateway-adapter tests, a production
+frontend build, a live inquiry classification, and all six live CRM command
+tools using Vercel AI Gateway model `typesafe-ai/jev`.
+
+| Capability | Current state |
+| --- | --- |
+| Model dashboard, opportunity search, scoring, TreeSHAP, and routing | Implemented and tested |
+| Opportunity-to-LeadFlow navigation without memorizing record IDs | Implemented and tested |
+| Live or deterministic-demo inquiry classification | Implemented and tested |
+| Six action queues, filters, status, uncertainty, and decision inspection | Implemented and tested |
+| Six approved CRM tools with validated arguments and result scope | Implemented and live-tested |
+| Preview and explicit confirmation for command-bar status changes | Implemented and tested |
+| Verified analytics over the complete matching population | Implemented and tested |
+| Public-safe default with optional LLM explanations disabled | Implemented |
+
+Live-provider success proves the integration path, not that every semantic
+classification will be correct. Low-confidence answers remain visible and are
+routed conservatively by application policy.
+
 ## Architecture
 
 ```mermaid
@@ -45,7 +68,7 @@ flowchart TD
     POLICY --> API
 
     API --> CACHE[(Versioned score cache)]
-    API --> UI[React dashboard and opportunity table]
+    API --> UI[React dashboard, opportunities, LeadFlow, and analytics]
 
     API --> LLM[Optional grounded LLM explanation]
     LLM --> UI
@@ -53,10 +76,17 @@ flowchart TD
     DS --> TOOLS[Allow-listed analytics and CRM tools]
     TOOLS --> API
 
-    INQUIRY[(Local SQLite inquiry store)] --> LEADFLOW[LeadFlow semantic judgments]
-    LEADFLOW --> POLICY[Workflow policy]
-    POLICY --> API
-    API --> COMMANDS[CRM command dispatcher]
+    UI --> LEADFLOW[LeadFlow service]
+    LEADFLOW --> JEV[Jev semantic evaluation]
+    LEADFLOW --> INQUIRY[(SQLite inquiry and history store)]
+    JEV --> WFPOLICY[Deterministic workflow policy]
+    SCORE --> WFPOLICY
+    WFPOLICY --> INQUIRY
+
+    UI --> COMMANDS[CRM command dispatcher]
+    COMMANDS --> JEV
+    COMMANDS --> TOOLS
+    COMMANDS --> INQUIRY
 ```
 
 The prediction and explanation paths have separate responsibilities. The LLM
@@ -71,7 +101,7 @@ runtime flow and component contracts.
 
 | Component | Responsibility |
 | --- | --- |
-| React frontend | Model dashboard, opportunity selection, scores, factors, routing, and analytics chat |
+| React frontend | Model dashboard, opportunity selection, inquiry composer and inbox, command bar, and analytics |
 | FastAPI backend | Typed API contracts, orchestration, health checks, and error handling |
 | Data service | B2B dataset loading, normalization, pagination, search, and aggregates |
 | Feature pipeline | Identical categorical and numerical transformations for training and inference |
@@ -86,6 +116,79 @@ runtime flow and component contracts.
 | Jev service | Runs deterministic demo judgments or optional live TypeSafe/Gateway evaluations |
 | Workflow policy | Composes semantic judgments with ML evidence into application-owned actions |
 | Command service | Maps requests to approved tools, validates arguments, and previews writes |
+
+## Where Jev is useful
+
+Jev is used for two bounded semantic decisions:
+
+1. **Inquiry understanding.** One evaluation asks independent questions over a
+   shared inquiry state: main intent, catalog product interest, purchase
+   timeline, explicit urgency, concrete purchase requirement, and missing
+   qualification information. Choice answers retain their probability
+   distributions; boolean/Noul answers retain their probability.
+2. **CRM command interpretation.** One evaluation selects one of six approved
+   tools and supported categorical arguments such as region, product group,
+   action queue, workflow status, or summary dimension.
+
+Jev does **not** calculate or modify the ML win probability, TreeSHAP factors,
+workflow action, analytics result, opportunity data, or workflow status. Python
+parses record and inquiry IDs, validates every argument, executes the selected
+allow-listed tool, and requires a separate confirmation request before a
+command can change status. This keeps probabilistic language understanding
+separate from deterministic business logic and side effects.
+
+## User workflows
+
+### Review and score an opportunity
+
+1. Open **Opportunities**, search or page through the dataset, and select one
+   or more rows.
+2. Choose **Score selected** to run local calibrated XGBoost inference.
+3. Review the 0–100 score and policy action. Hover over the score chip in the
+   Opportunities table to inspect the deterministic explanation and TreeSHAP
+   factors.
+4. With exactly one row selected, choose **Create inquiry**. LeadFlow opens with
+   the record ID prefilled and a confirmation banner showing opportunity,
+   product, region, and route-to-market context.
+
+### Classify and route an inquiry
+
+1. Enter non-sensitive inquiry text and choose **Classify & route**.
+2. Jev returns semantic judgments; the existing ML service independently
+   supplies the linked opportunity score.
+3. Python workflow policy composes both inputs into quote request,
+   qualification, nurture, support, do-not-contact, or human-review action.
+4. Inspect the original text, separate ML/Jev/policy cards, reason, uncertainty,
+   disagreement, provider/model, and question/policy versions.
+5. Filter queues and statuses or update a status directly in the inbox. Direct
+   inbox status changes apply immediately; command-bar status changes use the
+   preview-and-confirm flow.
+
+### Use the CRM command bar
+
+The persistent command bar supports only:
+
+- `list_opportunities`
+- `show_action_queue`
+- `score_opportunities`
+- `explain_opportunity`
+- `summarize_portfolio`
+- `update_workflow_status`
+
+Selection-aware commands can use checked opportunities or inquiries. Explicit
+record and inquiry IDs are parsed deterministically. Results show the chosen
+tool, confidence, interpreted arguments, matching scope, and every record
+returned by the backend. Unsupported dates, missing IDs, invalid IDs, unclear
+intent, and low-confidence tool choices produce clarification instead of an
+unsafe guess. Status writes create a server-side preview token and remain
+unchanged until **Confirm change** is selected.
+
+### Ask verified analytics questions
+
+The **Verified analytics** pane supports allow-listed portfolio summaries,
+highest-value opportunities, and observed win rates by region, route to market,
+product group, or competitor status. Its calculations are deterministic and do
+not call Jev or an explanation LLM.
 
 ## Prediction contract
 
@@ -277,6 +380,33 @@ The command prints only the returned model, sample classification,
 probabilities, and token usage. It never prints the key. The React browser does
 not use this variable.
 
+For the complete local browser flow, keep the key only in the same ignored
+`frontend/.env.local` and start three terminals from the repository root:
+
+```bash
+# Terminal 1: server-only AI SDK adapter on 127.0.0.1:3001
+npm --prefix frontend run serve:jev-local
+```
+
+```bash
+# Terminal 2: FastAPI using the protected local adapter
+TYPESAFE_MODE=gateway \
+JEV_GATEWAY_ADAPTER_URL=http://127.0.0.1:3001/api/jev \
+JEV_ADAPTER_TOKEN=local-dev-only \
+./start_backend.sh
+```
+
+```bash
+# Terminal 3: React UI pinned to port 3000
+PORT=3000 ./start_frontend.sh
+```
+
+Open `http://localhost:3000` and verify `http://127.0.0.1:8000/api/health`
+reports Jev mode `gateway`, model `typesafe-ai/jev`, and `demo: false`. Each
+new inquiry classification and each CRM command consumes one Gateway
+evaluation. Reading queues, scoring with XGBoost, applying an already-issued
+confirmation, and using verified analytics do not consume Jev credits.
+
 For a deployed live configuration, set `AI_GATEWAY_API_KEY` and a new random
 `JEV_ADAPTER_TOKEN` as Vercel server environment variables. Set the same
 `JEV_ADAPTER_TOKEN` on Render, plus:
@@ -368,6 +498,51 @@ analytics scope, LeadFlow labels and routing, command arguments and scope,
 preview-before-apply status changes, Gateway adapter normalization, health,
 and the end-to-end HTTP contract. The live smoke test is intentionally
 separate because it consumes one Gateway request and needs a user-owned key.
+
+The current local verification completed on September 19, 2026:
+
+- 22 backend tests passed.
+- Five adapter tests passed.
+- The optimized React production build passed.
+- FastAPI, the local adapter, and `typesafe-ai/jev` completed a live inquiry.
+- All six approved CRM tools were exercised from the browser in live mode.
+- A Gateway-mode status preview and confirmation completed successfully; a
+  regression test now enforces the public `provider_mode: live` contract.
+
+## Remaining production work and limitations
+
+No requested MVP feature is intentionally stubbed, but the following work
+remains before treating the public demo as a durable multi-instance production
+CRM:
+
+- Merge this branch and deploy the same revision to both Vercel and Render.
+- Give Render a persistent disk for SQLite or migrate inquiries, history,
+  confirmations, and semantic cache to PostgreSQL. The default Render
+  filesystem can be replaced during deploys.
+- Replace the process-local anonymous write limiter with a shared store such as
+  Redis before running multiple backend workers.
+- Add a browser-level end-to-end suite. Service, API-contract, adapter, build,
+  and manual live paths are covered today, but browser interactions are still
+  manually verified.
+- Establish a small labeled live-Jev evaluation set and tune taxonomy prompts
+  and confidence thresholds. For example, a live battery inquiry produced a
+  low-confidence product classification; the UI and policy handled the
+  uncertainty safely, but semantic quality still needs measurement.
+- Add explicit Gateway budgets/alerts before broad anonymous usage. The public
+  write limiter reduces abuse but is not a billing quota.
+- Consider an explicit **View factors** control and showing ML factors inside
+  LeadFlow. Factors are currently available through the Opportunities score
+  tooltip and API response.
+- Direct inbox status changes apply immediately; only command-bar status
+  changes are previewed. Use one consistent confirmation policy if the product
+  requirement expands beyond the current MVP.
+- Gateway Choice confidence is computed by the adapter from the returned
+  distribution. It is not a native direct-TypeSafe confidence value.
+- The dataset has no event timestamps, account identities, or real inquiry
+  history, so historical date filtering and temporal validation are not
+  claimed.
+- Optional generative explanations remain disabled on the public deployment.
+  ChatGPT Plus is not an API credential and cannot enable that endpoint.
 
 ## Repository structure
 

@@ -4,8 +4,9 @@
 
 The application prioritizes qualified B2B sales opportunities by estimating a
 calibrated closed-won probability from qualification-snapshot attributes. It
-serves the probability as a 0–100 score, explains the model contribution of each
-business feature, and applies a deterministic capacity policy.
+also classifies user-supplied inquiries into action queues and maps natural
+language requests to a six-tool CRM registry. ML, semantic judgment, workflow
+policy, and side effects remain separate contracts.
 
 ## Runtime architecture
 
@@ -32,21 +33,32 @@ flowchart TD
     end
 
     subgraph Application
-        API[FastAPI routes]
-        STORE[(Atomic JSON score cache)]
-        LLM[Optional Claude explanation]
-        ANALYTICS[Allow-listed analytics and CRM tools]
         UI[React application]
-        INQUIRIES[(SQLite inquiry store)]
-        JEV[Jev semantic judgments]
-        WF[Workflow policy]
+        API[FastAPI routes]
+        LF[LeadFlow service]
+        CMD[Command dispatcher]
+        STORE[(Atomic JSON score cache)]
+        INQUIRIES[(SQLite inquiries, history, cache, confirmations)]
+        ANALYTICS[Structured analytics and approved tools]
+        WF[Deterministic workflow policy]
+        LLM[Optional explanation LLM]
 
+        UI <--> API
+        API --> LF
+        API --> CMD
         API <--> STORE
-        API --> LLM --> API
-        API --> UI
-        ANALYTICS --> API
         API <--> INQUIRIES
-        INQUIRIES --> JEV --> WF --> API
+        API --> LLM --> API
+        CMD --> ANALYTICS
+        LF --> WF
+    end
+
+    subgraph Semantic evaluation
+        JEV[Jev service]
+        ADAPTER[Vercel server adapter]
+        GATEWAY[Vercel AI Gateway: typesafe-ai/jev]
+
+        JEV --> ADAPTER --> GATEWAY
     end
 
     DS --> FC
@@ -54,6 +66,11 @@ flowchart TD
     PC --> API
     TS --> API
     RP --> API
+    DS --> LF
+    LF --> JEV
+    CMD --> JEV
+    PC --> WF
+    WF --> INQUIRIES
 ```
 
 ## Scoring sequence
@@ -98,6 +115,12 @@ sequenceDiagram
 | `LLMService` | Immutable score evidence | Explanation and missing-information narrative | Cannot write score, factors, model version, or routing |
 | `AnalyticsService` | Natural-language question | Verified aggregate and scope metadata | Uses only allow-listed computations over matching records |
 | `ScoreStorage` | Score result | Versioned cached result | Input-hash validation, locking, and atomic replacement |
+| `JevService` | Inquiry or command plus dynamic choices | Typed semantic judgments | Demo, direct live, or protected Gateway mode; never executes a side effect |
+| `InquiryService` | Inquiry, decisions, status, confirmation | Dataset-bound records and history | SQLite transactions; confirmation tokens are single-use |
+| `LeadFlowService` | Linked record ID and inquiry text | Persisted decision trail | Semantic cache includes content, model, and question version |
+| `WorkflowPolicyService` | Jev judgments and immutable ML score | Action, priority, reason, uncertainty | Deterministic; support/opt-out safety overrides; outreach disabled |
+| `CommandService` | Jev tool choice, UI selection, explicit IDs | Validated tool result or clarification | Six-tool registry only; Python validates and executes |
+| Vercel Jev adapter | Protected evaluation request | Normalized Choice/Noul answers and usage | Server-only key, request caps, timeout, retries, no state logging |
 
 ## Training architecture
 
@@ -153,6 +176,40 @@ receives a provider credential. Gateway boolean answers are normalized to the
 internal Noul shape, while categorical confidence is computed from the
 returned probability distribution and labeled as application-derived.
 
+### Inquiry sequence
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as React LeadFlow
+    participant API as FastAPI
+    participant Data as Data/ML services
+    participant Jev as Jev service
+    participant Policy as Workflow policy
+    participant DB as SQLite
+
+    User->>UI: Select one opportunity and create inquiry
+    UI->>API: POST /api/inquiries
+    API->>Data: Validate record, score, and load current dataset checksum
+    API->>DB: Check semantic cache by content/model/question version
+    alt Semantic cache miss
+        API->>Jev: Shared state plus six focused questions
+        Jev-->>API: Choice distributions and Noul probabilities
+        API->>DB: Store semantic decision
+    else Cache hit
+        DB-->>API: Stored semantic decision
+    end
+    API->>Policy: Compose semantic judgment with immutable ML score
+    Policy-->>API: Action, priority, reason, uncertainty, disagreement
+    API->>DB: Store inquiry, decisions, dataset binding, and initial status
+    API-->>UI: Complete inspectable decision trail
+```
+
+Jev is useful here because intent, urgency, missing information, and product
+language are semantic rather than tabular. It is not permitted to estimate the
+win probability or choose the final action. A low-confidence semantic answer
+remains visible; policy can route it to qualification or human review.
+
 ## CRM command architecture
 
 The command bar first obtains a constrained tool and categorical-argument
@@ -164,6 +221,69 @@ the matching population and returned page, aggregation reports its full
 matching population, and date filters are rejected because the source has no
 event timestamps. Status updates create a SQLite confirmation record before
 any write and are applied only by the explicit confirmation endpoint.
+
+### Command sequence
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as CRM command bar
+    participant API as FastAPI
+    participant Jev as Jev service
+    participant Cmd as Command service
+    participant Tool as Approved Python tool
+    participant DB as SQLite
+
+    User->>UI: Natural-language command plus current selection
+    UI->>API: POST /api/commands
+    API->>Jev: Command plus dynamic categorical choices
+    Jev-->>Cmd: Tool choice, confidence, categorical arguments
+    Cmd->>Cmd: Parse explicit IDs; validate choices, scope, and limits
+    alt Read or scoring tool
+        Cmd->>Tool: Execute allow-listed operation
+        Tool-->>Cmd: Deterministic result
+        Cmd-->>API: Result, interpreted arguments, and scope
+        API-->>UI: Typed command response
+    else Status update
+        Cmd->>DB: Create pending single-use confirmation
+        DB-->>Cmd: Confirmation ID
+        Cmd-->>API: Preview only
+        API-->>UI: Typed preview response
+        User->>UI: Confirm change
+        UI->>API: POST /api/commands/confirm
+        API->>DB: Apply pending status and history atomically
+        DB-->>UI: Confirmed result
+    end
+```
+
+Jev is useful here for mapping varied wording to a constrained tool and known
+categorical values. It does not parse record IDs, query data, score records,
+calculate aggregates, or apply writes. Those operations remain deterministic
+Python functions with typed responses.
+
+## User-facing surfaces
+
+| Surface | What a user can do | External semantic cost |
+| --- | --- | --- |
+| Model dashboard | Review population, observed performance, model metrics, and model contract | None |
+| Opportunities | Search, select, batch score, inspect score factors, and open LeadFlow with record context | None |
+| LeadFlow inbox | Create/classify inquiries, inspect three decision layers, filter queues, and manage status | One Jev evaluation per new uncached inquiry |
+| CRM command bar | Run one of six approved tools with selection context and confirm status writes | One Jev evaluation per command; confirmation itself is free |
+| Verified analytics | Ask approved portfolio aggregation and ranking questions | None |
+
+## Decision ownership
+
+| Decision or operation | Owner |
+| --- | --- |
+| Closed-won probability and 0–100 score | Calibrated XGBoost pipeline |
+| Positive and negative model factors | TreeSHAP |
+| Inquiry intent, product, timeline, urgency, requirement, missing information | Jev semantic evaluation |
+| Command tool and supported categorical arguments | Jev semantic evaluation |
+| Record/inquiry ID parsing and validation | Python command service |
+| LeadFlow action, priority, explanation, disagreement, and outreach prohibition | Python workflow policy |
+| Filters, scoring, explanations, rankings, and portfolio calculations | Approved Python tools |
+| Status mutation | SQLite service after explicit confirmation |
+| Optional narrative wording | Disabled-by-default explanation LLM |
 
 ## Operational controls
 
@@ -177,3 +297,28 @@ any write and are applied only by the explicit confirmation endpoint.
   decision fields.
 - Score persistence uses a process-local lock, file synchronization, and atomic
   replacement.
+- Anonymous write endpoints are rate-limited per backend process.
+- Localhost development accepts numeric ports while production CORS remains
+  restricted to this project's Vercel domains.
+- Gateway transport mode is normalized to public provider mode `live`; `demo`
+  remains explicit in every response and UI badge.
+
+## Current limitations
+
+- SQLite and the JSON score cache require a Render persistent disk or migration
+  to a managed database for durable multi-instance deployment.
+- The rate limiter is process-local rather than distributed.
+- Browser interactions are manually verified; automated coverage currently
+  targets services, API contracts, adapter normalization, and production build.
+- Live semantic accuracy needs a labeled evaluation set and threshold/taxonomy
+  tuning. Application uncertainty handling is implemented, but it cannot make
+  an uncertain provider judgment intrinsically correct.
+- The Opportunities table exposes TreeSHAP factors through a hover tooltip;
+  LeadFlow currently displays the score and routing but not the full factor list.
+- Direct inbox status edits apply immediately, while command-bar edits require
+  preview and confirmation.
+- Gateway confidence is application-derived from the returned choice
+  distribution; direct TypeSafe revision parity is not claimed.
+- The source has no timestamps or real historical inquiry text. Date filtering,
+  temporal backtesting, account-level journeys, and automated outreach are out
+  of scope.
