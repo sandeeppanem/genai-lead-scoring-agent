@@ -1,7 +1,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { distributionConfidence, normalizeAnswers, validateQuestions } = require('./jev')._test;
+const {
+  distributionConfidence,
+  loadEvaluate,
+  normalizeAnswers,
+  validateQuestions,
+} = require('./jev')._test;
+
+test('loads the ESM-only AI SDK from the CommonJS function', async () => {
+  const evaluate = await loadEvaluate();
+  assert.equal(typeof evaluate, 'function');
+});
 
 test('normalizes Gateway boolean answers into TypeSafe Noul shape', () => {
   const result = normalizeAnswers({ urgent: { type: 'boolean', probability: 0.91 } });

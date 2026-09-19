@@ -1,9 +1,21 @@
 const crypto = require('crypto');
-const { experimental_evaluate: evaluate } = require('ai');
 
 const MODEL = 'typesafe-ai/jev';
 const MAX_STATE_BYTES = 20000;
 const MAX_QUESTIONS = 12;
+let evaluateLoader;
+
+const loadEvaluate = async () => {
+  if (!evaluateLoader) {
+    evaluateLoader = import('ai').then((sdk) => {
+      if (typeof sdk.experimental_evaluate !== 'function') {
+        throw new Error('AI SDK evaluation API is unavailable');
+      }
+      return sdk.experimental_evaluate;
+    });
+  }
+  return evaluateLoader;
+};
 
 const safeEqual = (left, right) => {
   const leftBuffer = Buffer.from(left || '');
@@ -115,6 +127,7 @@ module.exports = async function handler(request, response) {
       throw new Error('state exceeds the 20 KB limit');
     }
     const questions = validateQuestions(body.questions);
+    const evaluate = await loadEvaluate();
     const result = await evaluate({
       model: MODEL,
       state: body.state,
@@ -145,4 +158,9 @@ module.exports = async function handler(request, response) {
   }
 };
 
-module.exports._test = { distributionConfidence, normalizeAnswers, validateQuestions };
+module.exports._test = {
+  distributionConfidence,
+  loadEvaluate,
+  normalizeAnswers,
+  validateQuestions,
+};

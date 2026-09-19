@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const { experimental_evaluate: evaluate } = require('ai');
 
 const loadLocalGatewayKey = () => {
   if (process.env.AI_GATEWAY_API_KEY) return;
@@ -21,6 +20,7 @@ const main = async () => {
     process.exitCode = 2;
     return;
   }
+  const { experimental_evaluate: evaluate } = await import('ai');
   const result = await evaluate({
     model: 'typesafe-ai/jev',
     state: {
