@@ -16,6 +16,7 @@ class CommandService:
     """Validate Jev-selected tools and execute only the approved local registry."""
 
     CONFIDENCE_FLOOR = 0.5
+    CONFIRMATION_SENSITIVITY_THRESHOLD = 0.65
     DATE_PATTERN = re.compile(
         r"\b(?:before|after|since|between|yesterday|today|last\s+(?:week|month|year)|20\d{2})\b",
         re.IGNORECASE,
@@ -62,18 +63,30 @@ class CommandService:
                 "competitor_type",
             )
         }
-        decision = self.jev_service.classify_command(command, dimensions)
+        decision = self.jev_service.classify_command(
+            command,
+            dimensions,
+            self.data_service.product_taxonomy(),
+        )
         base = {
             "tool": decision["tool"] if decision["tool"] != "unknown" else None,
             "confidence": decision["confidence"],
             "provider_mode": decision["provider_mode"],
             "model": decision["model"],
+            "decision_trace": self._decision_trace(
+                decision,
+                confirmation_required=False,
+                reason="The semantic decision is pending deterministic tool validation.",
+            ),
         }
         if (
             decision["tool"] == "unknown"
             or decision["confidence"] < self.CONFIDENCE_FLOOR
             or decision["tool"] not in self.registry
         ):
+            base["decision_trace"]["confirmation_reason"] = (
+                "No tool ran because the request did not map confidently to the approved registry."
+            )
             return {
                 **base,
                 "interpreted_arguments": {},
@@ -84,10 +97,43 @@ class CommandService:
                 ),
             }
 
+        requested_effect = decision["requested_effect"]
+        confirmation_sensitivity = float(
+            decision["confirmation_sensitivity"]["probability"]
+        )
+        tool_changes_state = decision["tool"] == "update_workflow_status"
+        effect_changes_state = requested_effect["value"] == "state_change"
+        effect_mismatch = (
+            requested_effect["value"] == "unclear"
+            or tool_changes_state != effect_changes_state
+            or (
+                not tool_changes_state
+                and confirmation_sensitivity
+                >= self.CONFIRMATION_SENSITIVITY_THRESHOLD
+            )
+        )
+        if effect_mismatch:
+            base["decision_trace"]["confirmation_reason"] = (
+                "No tool ran because the requested effect and selected tool did not agree safely."
+            )
+            return {
+                **base,
+                "interpreted_arguments": decision["arguments"],
+                "scope": {},
+                "message": (
+                    "I could not determine safely whether this request only reads data or "
+                    "changes workflow state. Rephrase it as an inspection or an explicit "
+                    "status change."
+                ),
+            }
+
         if self.DATE_PATTERN.search(command) and decision["tool"] in {
             "list_opportunities",
             "summarize_portfolio",
         }:
+            base["decision_trace"]["confirmation_reason"] = (
+                "No mutation was attempted; the unsupported time filter requires clarification."
+            )
             return {
                 **base,
                 "interpreted_arguments": decision["arguments"],
@@ -105,7 +151,31 @@ class CommandService:
             "urgent": bool(re.search(r"\b(?:urgent|highest priority|asap)\b", command, re.IGNORECASE)),
         }
         response = self.registry[decision["tool"]](arguments)
-        return {**base, **response}
+        confirmation_required = bool(response.get("requires_confirmation"))
+        if confirmation_required:
+            confirmation_reason = (
+                "Application policy requires an explicit preview confirmation for every "
+                "workflow state change; Jev cannot waive it."
+            )
+        elif tool_changes_state:
+            confirmation_reason = (
+                "No confirmation token was created because no applicable workflow change "
+                "was ready to execute."
+            )
+        else:
+            confirmation_reason = (
+                "The validated tool is read-only, so application policy does not require "
+                "confirmation."
+            )
+        return {
+            **base,
+            **response,
+            "decision_trace": self._decision_trace(
+                decision,
+                confirmation_required=confirmation_required,
+                reason=confirmation_reason,
+            ),
+        }
 
     def confirm(self, confirmation_id: str) -> Dict[str, Any]:
         result = self.inquiry_service.apply_pending_status_change(confirmation_id)
@@ -116,13 +186,25 @@ class CommandService:
                 "inquiry_ids": result["inquiry_ids"],
                 "workflow_status": result["status"],
             },
-            "scope": {"updated": len(result["inquiry_ids"])},
+            "scope": {
+                "requested": len(result["requested_inquiry_ids"]),
+                "updated": len(result["inquiry_ids"]),
+                "already_target": len(result["already_target_ids"]),
+            },
             "message": (
                 f"Updated {len(result['inquiry_ids'])} inquiry"
                 f"{'ies' if len(result['inquiry_ids']) != 1 else ''} to "
                 f"{result['status'].replace('_', ' ')}."
             ),
             "result": result,
+            "decision_trace": {
+                "confirmation_required": False,
+                "confirmation_reason": (
+                    "The single-use confirmation was accepted and the validated state "
+                    "transition was applied; no second Jev evaluation was needed."
+                ),
+                "source": "application_policy",
+            },
             "provider_mode": self.jev_service.public_provider_mode,
             "model": self.jev_service.model_identity,
         }
@@ -236,29 +318,77 @@ class CommandService:
                 arguments, "Specify one of: new, in review, reviewed, or resolved."
             )
         try:
-            confirmation_id = self.inquiry_service.create_pending_status_change(
+            preview = self.inquiry_service.create_pending_status_change(
                 inquiry_ids, new_status
             )
         except (KeyError, ValueError) as error:
             return self._clarification(arguments, str(error))
+        confirmation_id = preview["confirmation_id"]
+        transitions = preview["transitions"]
+        affected = len(preview["actionable_inquiry_ids"])
+        already_target = len(preview["already_target_ids"])
+        result = {
+            "inquiry_ids": inquiry_ids,
+            "new_status": new_status,
+            "transitions": transitions,
+            "side_effects": (
+                f"{affected} workflow status value{'s' if affected != 1 else ''} and "
+                f"{affected} matching status-history entr{'ies' if affected != 1 else 'y'} "
+                "will be written."
+                if affected
+                else "No workflow data will change because every inquiry already has the target status."
+            ),
+        }
+        if not confirmation_id:
+            return {
+                "interpreted_arguments": {
+                    "inquiry_ids": inquiry_ids,
+                    "workflow_status": new_status,
+                },
+                "scope": {
+                    "selected_inquiries": len(inquiry_ids),
+                    "affected_inquiries": 0,
+                    "already_target": already_target,
+                },
+                "message": (
+                    f"No change is needed; all {already_target} selected "
+                    f"inquir{'ies are' if already_target != 1 else 'y is'} already "
+                    f"{new_status.replace('_', ' ')}."
+                ),
+                "result": result,
+            }
         return {
             "interpreted_arguments": {
                 "inquiry_ids": inquiry_ids,
                 "workflow_status": new_status,
             },
-            "scope": {"affected_inquiries": len(inquiry_ids)},
-            "message": (
-                f"Preview: mark {len(inquiry_ids)} inquiry"
-                f"{'ies' if len(inquiry_ids) != 1 else ''} as "
-                f"{new_status.replace('_', ' ')}. Confirm to apply."
-            ),
-            "result": {
-                "inquiry_ids": inquiry_ids,
-                "new_status": new_status,
-                "side_effects": "Workflow status and status history will be updated.",
+            "scope": {
+                "selected_inquiries": len(inquiry_ids),
+                "affected_inquiries": affected,
+                "already_target": already_target,
             },
+            "message": (
+                f"Preview: mark {affected} inquiry"
+                f"{'ies' if affected != 1 else ''} as "
+                f"{new_status.replace('_', ' ')}. "
+                f"{already_target} already match. Confirm to apply."
+            ),
+            "result": result,
             "requires_confirmation": True,
             "confirmation_id": confirmation_id,
+        }
+
+    @staticmethod
+    def _decision_trace(
+        decision: Dict[str, Any], confirmation_required: bool, reason: str
+    ) -> Dict[str, Any]:
+        return {
+            "requested_effect": decision["requested_effect"],
+            "confirmation_sensitivity": decision["confirmation_sensitivity"],
+            "confirmation_required": confirmation_required,
+            "confirmation_reason": reason,
+            "question_version": decision["question_version"],
+            "source": "jev_with_application_policy",
         }
 
     @staticmethod

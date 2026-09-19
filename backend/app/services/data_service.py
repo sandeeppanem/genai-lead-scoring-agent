@@ -107,6 +107,14 @@ class DataService:
             return []
         return sorted(self.dataframe[column].dropna().astype(str).unique().tolist())
 
+    def product_taxonomy(self) -> Dict[str, List[str]]:
+        """Return the dataset-owned product group and subgroup hierarchy."""
+        pairs = self.dataframe[["supplies_group", "supplies_subgroup"]].dropna()
+        return {
+            str(group): sorted(rows["supplies_subgroup"].astype(str).unique().tolist())
+            for group, rows in pairs.groupby("supplies_group", sort=True)
+        }
+
     def filtered_frame(self, filters: Dict[str, str]) -> pd.DataFrame:
         frame = self.dataframe
         for column, value in filters.items():

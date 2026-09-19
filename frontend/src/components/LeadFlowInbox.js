@@ -55,6 +55,11 @@ const labels = {
 const actionColor = {
   quote_request: 'success', qualification: 'info', nurture: 'secondary', support: 'warning', do_not_contact: 'error', human_review: 'default',
 };
+const priorityAdjustmentLabels = {
+  raised: 'ML raised priority',
+  lowered: 'ML lowered priority',
+  unchanged: 'ML kept priority',
+};
 const probability = (value) => `${Math.round((value || 0) * 100)}%`;
 const label = (value) => labels[value] || String(value || '').replaceAll('_', ' ');
 
@@ -346,6 +351,11 @@ const LeadFlowInbox = ({
               {active.workflow_decision.disagreement && (
                 <Alert severity="info" sx={{ mt: 2 }}>{active.workflow_decision.disagreement}</Alert>
               )}
+              {active.workflow_decision.human_escalation_triggered && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  Human review triggered · {label(active.workflow_decision.human_escalation_reason)}
+                </Alert>
+              )}
 
               <Grid container spacing={2} mt={0.25}>
                 <Grid item xs={12} md={4}>
@@ -364,6 +374,15 @@ const LeadFlowInbox = ({
                     <Typography variant="caption" display="block" mt={1}>
                       Intent probability is not conversion probability.
                     </Typography>
+                    <Chip
+                      size="small"
+                      color={active.semantic_decision.provider_mode === 'live' ? 'success' : 'warning'}
+                      variant="outlined"
+                      sx={{ mt: 1 }}
+                      label={active.semantic_decision.provider_mode === 'live'
+                        ? `Live Jev · ${active.semantic_decision.model}`
+                        : 'Demo decision provider'}
+                    />
                   </DecisionCard>
                 </Grid>
                 <Grid item xs={12} md={4}>
@@ -372,6 +391,17 @@ const LeadFlowInbox = ({
                       {active.workflow_decision.priority} priority · outreach disabled
                     </Typography>
                     <Typography variant="caption" display="block" mt={1}>{active.workflow_decision.policy_version}</Typography>
+                    {priorityAdjustmentLabels[active.workflow_decision.ml_priority_adjustment] && (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        sx={{ mt: 1 }}
+                        label={priorityAdjustmentLabels[active.workflow_decision.ml_priority_adjustment]}
+                      />
+                    )}
+                    {active.workflow_decision.human_escalation_triggered && (
+                      <Chip size="small" color="warning" variant="outlined" sx={{ mt: 1, ml: 0.5 }} label="Human escalation" />
+                    )}
                   </DecisionCard>
                 </Grid>
               </Grid>
@@ -379,6 +409,17 @@ const LeadFlowInbox = ({
               <Paper sx={{ bgcolor: 'grey.50', p: 2, mt: 2 }} elevation={0}>
                 <Typography variant="subtitle2" gutterBottom>Why this action</Typography>
                 <Typography variant="body2">{active.workflow_decision.reason}</Typography>
+                {active.workflow_decision.priority_reason && (
+                  <>
+                    <Typography variant="subtitle2" mt={1.5} gutterBottom>Why this priority</Typography>
+                    <Typography variant="body2">{active.workflow_decision.priority_reason}</Typography>
+                    {active.workflow_decision.base_priority && (
+                      <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
+                        Semantic base: {label(active.workflow_decision.base_priority)} · Final: {label(active.workflow_decision.priority)}
+                      </Typography>
+                    )}
+                  </>
+                )}
               </Paper>
 
               <Typography variant="subtitle1" fontWeight={700} mt={2.5} mb={1}>Decision inspector</Typography>
@@ -389,8 +430,18 @@ const LeadFlowInbox = ({
                   ['Explicit urgency', probability(active.semantic_decision.explicit_urgency.probability), 'Noul/boolean probability'],
                   ['Concrete requirement', probability(active.semantic_decision.concrete_purchase_requirement.probability), 'Noul/boolean probability'],
                   ['Qualification missing', probability(active.semantic_decision.qualification_information_missing.probability), 'Noul/boolean probability'],
+                  active.semantic_decision.human_review_required && [
+                    'Human review required',
+                    probability(active.semantic_decision.human_review_required.probability),
+                    'Noul/boolean probability',
+                  ],
+                  active.semantic_decision.escalation_reason && [
+                    'Escalation reason',
+                    label(active.semantic_decision.escalation_reason.value),
+                    `${probability(active.semantic_decision.escalation_reason.confidence)} classification confidence`,
+                  ],
                   ['Decision model', active.semantic_decision.model, active.semantic_decision.cache_hit ? 'semantic cache hit' : active.semantic_decision.question_version],
-                ].map(([title, value, note]) => (
+                ].filter(Boolean).map(([title, value, note]) => (
                   <Grid item xs={12} sm={6} md={4} key={title}>
                     <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.5, height: '100%' }}>
                       <Typography variant="caption" color="text.secondary">{title}</Typography>

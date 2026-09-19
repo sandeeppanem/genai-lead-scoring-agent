@@ -16,8 +16,8 @@ class JevService:
     """Focused TypeSafe/Jev judgments with an explicitly labelled demo mode."""
 
     API_URL = "https://api.typesafe.ai/v1/systemone"
-    QUESTION_VERSION = "leadflow-inquiry-v1"
-    COMMAND_QUESTION_VERSION = "leadflow-command-v1"
+    QUESTION_VERSION = "leadflow-inquiry-v3"
+    COMMAND_QUESTION_VERSION = "leadflow-command-v3"
 
     INTENTS = {
         "quote_request": "Requests pricing, a quote, an order, or a concrete purchase.",
@@ -34,6 +34,18 @@ class JevService:
         "three_to_twelve_months": "More than three months and within one year.",
         "beyond_twelve_months": "More than one year away.",
         "unspecified": "No purchase timing is stated.",
+    }
+    ESCALATION_REASONS = {
+        "none": "The request can be handled by an approved workflow queue.",
+        "ambiguous_intent": "The primary intent is too ambiguous to route safely.",
+        "conflicting_signals": "The request contains conflicting operational intents.",
+        "unsupported_request": "The request is outside the approved workflow queues.",
+        "safety_sensitive": "The request needs a person because of safety or operational risk.",
+    }
+    REQUESTED_EFFECTS = {
+        "read_only": "The request only reads, scores, explains, or summarizes existing data.",
+        "state_change": "The request asks to change persisted workflow state.",
+        "unclear": "It is unclear whether the user is asking to inspect or change data.",
     }
     TOOLS = {
         "list_opportunities": "Retrieve opportunities using supported filters.",
@@ -77,24 +89,33 @@ class JevService:
         return "demo" if self.mode == "demo" else "live"
 
     def classify_inquiry(
-        self, inquiry_text: str, product_groups: List[str]
+        self, inquiry_text: str, product_taxonomy: Mapping[str, List[str]]
     ) -> Dict[str, Any]:
         if self.mode == "demo":
-            return self._demo_inquiry(inquiry_text, product_groups)
+            return self._demo_inquiry(inquiry_text, product_taxonomy)
         if not self.is_ready:
             raise JevUnavailableError(
                 "The configured Jev provider is missing its server-side credentials."
             )
 
-        product_keys = {self._option_key(value): value for value in product_groups}
+        product_keys = {
+            self._option_key(group): group for group in product_taxonomy
+        }
+        product_criteria = {
+            self._option_key(group): self._product_group_description(group, subgroups)
+            for group, subgroups in product_taxonomy.items()
+        }
         product_keys["unknown"] = "Unknown or not stated"
+        product_criteria["unknown"] = (
+            "The inquiry does not identify a product represented by the catalog."
+        )
         questions = {
             "main_intent": self._choice_question(
                 "What is the customer's single main intent?", self.INTENTS
             ),
             "product_interest": self._choice_question(
-                "Which catalog product group is the customer asking about?",
-                {key: value for key, value in product_keys.items()},
+                "Which top-level catalog product group best matches the product in the inquiry? Use the supplied subgroup hierarchy as the authoritative catalog semantics.",
+                product_criteria,
             ),
             "purchase_timeline": self._choice_question(
                 "What purchase timeline is explicitly supported by the inquiry?",
@@ -109,11 +130,18 @@ class JevService:
             "qualification_information_missing": self._noul_question(
                 "Is important information needed to progress the request missing?"
             ),
+            "human_review_required": self._noul_question(
+                "Does this inquiry require human review because its operational intent is ambiguous, internally conflicting, unsupported by the approved queues, or safety-sensitive? Routine missing sales qualification details alone are not sufficient."
+            ),
+            "escalation_reason": self._choice_question(
+                "What is the primary reason for human escalation, if any?",
+                self.ESCALATION_REASONS,
+            ),
         }
         payload = self._evaluate(
             state={
                 "inquiry": inquiry_text,
-                "catalog_product_groups": product_groups,
+                "catalog_product_taxonomy": dict(product_taxonomy),
                 "instruction": "Judge only the inquiry. Do not infer sales outcomes or conversion likelihood.",
             },
             questions=questions,
@@ -134,6 +162,12 @@ class JevService:
             "qualification_information_missing": self._normalize_noul(
                 answers, "qualification_information_missing"
             ),
+            "human_review_required": self._normalize_noul(
+                answers, "human_review_required"
+            ),
+            "escalation_reason": self._normalize_choice(
+                answers, "escalation_reason", self.ESCALATION_REASONS
+            ),
             "provider_mode": "live",
             "model": str(payload["model"]),
             "question_version": self.QUESTION_VERSION,
@@ -145,9 +179,10 @@ class JevService:
         self,
         command: str,
         dimensions: Mapping[str, List[str]],
+        product_taxonomy: Optional[Mapping[str, List[str]]] = None,
     ) -> Dict[str, Any]:
         if self.mode == "demo":
-            return self._demo_command(command, dimensions)
+            return self._demo_command(command, dimensions, product_taxonomy)
         if not self.is_ready:
             raise JevUnavailableError(
                 "The configured Jev provider is missing its server-side credentials."
@@ -190,26 +225,46 @@ class JevService:
                     "not_specified": None,
                 },
             ),
+            "requested_effect": self._choice_question(
+                "Does the user request a read-only operation or a persisted workflow state change?",
+                self.REQUESTED_EFFECTS,
+            ),
+            "confirmation_sensitivity": self._noul_question(
+                "Would fulfilling this request change persisted workflow data or otherwise require explicit user confirmation? Workflow status changes require confirmation; reads, scoring, explanations, and summaries do not."
+            ),
         }
         option_maps: Dict[str, Dict[str, str]] = {}
         for dimension, values in dimensions.items():
             option_map = {self._option_key(value): value for value in values}
             option_map["not_specified"] = "Not specified"
             option_maps[dimension] = option_map
+            criteria: Dict[str, Any] = dict(option_map)
+            if dimension == "supplies_group" and product_taxonomy:
+                criteria = {
+                    self._option_key(group): self._product_group_description(
+                        group, subgroups
+                    )
+                    for group, subgroups in product_taxonomy.items()
+                }
+                criteria["not_specified"] = "No catalog product is requested."
             questions[dimension] = self._choice_question(
                 f"Which supported {dimension.replace('_', ' ')} value is requested?",
-                option_map,
+                criteria,
             )
 
         payload = self._evaluate(
             state={
                 "command": command,
+                "catalog_product_taxonomy": dict(product_taxonomy or {}),
                 "instruction": "Choose only supported tools and categorical values. Use unknown or not_specified when unclear.",
             },
             questions=questions,
         )
         answers = payload["answers"]
         tool = self._normalize_choice(answers, "tool", self.TOOLS)
+        requested_effect = self._normalize_choice(
+            answers, "requested_effect", self.REQUESTED_EFFECTS
+        )
         arguments: Dict[str, Optional[str]] = {}
         for key in ("summary_dimension", "queue_action", "workflow_status"):
             allowed = questions[key]["criteria"]
@@ -224,6 +279,10 @@ class JevService:
             "tool": tool["value"],
             "confidence": tool["confidence"],
             "probabilities": tool["probabilities"],
+            "requested_effect": requested_effect,
+            "confirmation_sensitivity": self._normalize_noul(
+                answers, "confirmation_sensitivity"
+            ),
             "arguments": arguments,
             "provider_mode": "live",
             "model": str(payload["model"]),
@@ -279,7 +338,7 @@ class JevService:
         ) from last_error
 
     def _demo_inquiry(
-        self, inquiry_text: str, product_groups: List[str]
+        self, inquiry_text: str, product_taxonomy: Mapping[str, List[str]]
     ) -> Dict[str, Any]:
         text = inquiry_text.casefold()
         intent = "other"
@@ -302,10 +361,20 @@ class JevService:
         product_tokens = {
             "Tires & Wheels": ("tire", "tyre", "wheel"),
             "Car Electronics": ("car electronic", "electronics", "stereo", "gps", "camera"),
-            "Performance & Non-auto": ("performance", "motorcycle", "rv", "towing", "hitch"),
-            "Car Accessories": ("battery", "batteries", "accessor", "replacement part", "car care", "interior", "exterior"),
+            "Performance & Non-auto": ("performance", "motorcycle", "rv", "shelter"),
+            "Car Accessories": (
+                "battery",
+                "batteries",
+                "accessor",
+                "replacement part",
+                "car care",
+                "interior",
+                "exterior",
+                "towing",
+                "hitch",
+            ),
         }
-        for candidate in product_groups:
+        for candidate in product_taxonomy:
             tokens = product_tokens.get(candidate, (candidate.casefold(),))
             if any(token in text for token in tokens):
                 product = candidate
@@ -338,8 +407,10 @@ class JevService:
             (product == "Unknown", timeline == "unspecified", not has_quantity)
         )
         missing = 0.9 if intent in {"quote_request", "product_fit"} and missing_count else 0.18
+        human_review = 0.92 if intent == "other" else 0.08
+        escalation_reason = "ambiguous_intent" if intent == "other" else "none"
 
-        product_options = list(product_groups) + ["Unknown"]
+        product_options = list(product_taxonomy) + ["Unknown"]
         return {
             "main_intent": self._demo_choice(intent, list(self.INTENTS), intent_strength),
             "product_interest": self._demo_choice(product, product_options, product_strength),
@@ -347,6 +418,12 @@ class JevService:
             "explicit_urgency": {"probability": urgent},
             "concrete_purchase_requirement": {"probability": concrete},
             "qualification_information_missing": {"probability": missing},
+            "human_review_required": {"probability": human_review},
+            "escalation_reason": self._demo_choice(
+                escalation_reason,
+                list(self.ESCALATION_REASONS),
+                0.9,
+            ),
             "provider_mode": "demo",
             "model": "demo-rules-v1",
             "question_version": self.QUESTION_VERSION,
@@ -355,7 +432,10 @@ class JevService:
         }
 
     def _demo_command(
-        self, command: str, dimensions: Mapping[str, List[str]]
+        self,
+        command: str,
+        dimensions: Mapping[str, List[str]],
+        product_taxonomy: Optional[Mapping[str, List[str]]] = None,
     ) -> Dict[str, Any]:
         text = command.casefold()
         if any(word in text for word in ("mark ", "set ", "reviewed", "resolved", "in review")):
@@ -381,6 +461,15 @@ class JevService:
         for dimension, values in dimensions.items():
             arguments[dimension] = next(
                 (value for value in values if value.casefold() in text), None
+            )
+        if arguments.get("supplies_group") is None and product_taxonomy:
+            arguments["supplies_group"] = next(
+                (
+                    group
+                    for group, subgroups in product_taxonomy.items()
+                    if any(subgroup.casefold() in text for subgroup in subgroups)
+                ),
+                None,
             )
         dimension_aliases = {
             "route_to_market": ("sales channel", "channel", "route to market", "route"),
@@ -415,12 +504,26 @@ class JevService:
                 break
 
         confidence = 0.96 if tool != "unknown" else 0.18
+        requested_effect = (
+            "state_change"
+            if tool == "update_workflow_status"
+            else "unclear" if tool == "unknown" else "read_only"
+        )
+        effect_strength = 0.96 if tool != "unknown" else 0.45
         return {
             "tool": tool,
             "confidence": confidence,
             "probabilities": self._demo_choice(
                 tool, list(self.TOOLS), max(confidence, 0.3)
             )["probabilities"],
+            "requested_effect": self._demo_choice(
+                requested_effect,
+                list(self.REQUESTED_EFFECTS),
+                effect_strength,
+            ),
+            "confirmation_sensitivity": {
+                "probability": 0.96 if requested_effect == "state_change" else 0.05
+            },
             "arguments": arguments,
             "provider_mode": "demo",
             "model": "demo-rules-v1",
@@ -431,6 +534,12 @@ class JevService:
     @staticmethod
     def _choice_question(instructions: str, criteria: Mapping[str, Any]) -> Dict[str, Any]:
         return {"type": "choice", "instructions": instructions, "criteria": dict(criteria)}
+
+    @staticmethod
+    def _product_group_description(group: str, subgroups: List[str]) -> str:
+        if not subgroups:
+            return group
+        return f"{group}. Includes catalog subgroups: {', '.join(subgroups)}."
 
     @staticmethod
     def _noul_question(instructions: str) -> Dict[str, Any]:

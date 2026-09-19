@@ -153,7 +153,26 @@ class APIContractTest(unittest.TestCase):
         self.assertEqual(created.status_code, 201, created.text)
         item = created.json()
         self.assertEqual(item["workflow_decision"]["action"], "quote_request")
+        self.assertEqual(item["workflow_decision"]["policy_version"], "leadflow-policy-v3")
+        self.assertEqual(item["workflow_decision"]["base_priority"], "urgent")
+        self.assertEqual(
+            item["workflow_decision"]["ml_priority_adjustment"], "not_applicable"
+        )
         self.assertEqual(item["semantic_decision"]["provider_mode"], "demo")
+        self.assertEqual(
+            item["semantic_decision"]["question_version"], "leadflow-inquiry-v3"
+        )
+        self.assertLess(
+            item["semantic_decision"]["human_review_required"]["probability"],
+            0.65,
+        )
+        self.assertEqual(
+            item["semantic_decision"]["escalation_reason"]["value"], "none"
+        )
+        self.assertEqual(
+            item["semantic_decision"]["product_interest"]["value"],
+            "Car Accessories",
+        )
         self.assertNotEqual(
             item["semantic_decision"]["main_intent"]["probabilities"],
             item["ml_score"]["probability"],
@@ -170,6 +189,10 @@ class APIContractTest(unittest.TestCase):
         self.assertEqual(command.status_code, 200, command.text)
         self.assertEqual(command.json()["tool"], "explain_opportunity")
         self.assertEqual(command.json()["result"]["record_id"], 1)
+        self.assertEqual(
+            command.json()["decision_trace"]["requested_effect"]["value"],
+            "read_only",
+        )
 
         preview = self.client.post(
             "/api/commands",
@@ -180,6 +203,11 @@ class APIContractTest(unittest.TestCase):
         )
         self.assertEqual(preview.status_code, 200, preview.text)
         self.assertTrue(preview.json()["requires_confirmation"])
+        self.assertTrue(preview.json()["decision_trace"]["confirmation_required"])
+        self.assertEqual(
+            preview.json()["result"]["transitions"][0]["current_status"],
+            "new",
+        )
         original_mode = routes.jev_service.mode
         routes.jev_service.mode = "gateway"
         try:

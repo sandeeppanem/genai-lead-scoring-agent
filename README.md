@@ -20,8 +20,8 @@ a prioritized workflow, and portfolio-level analytics.
 | Model dashboard | Review the source population, observed business outcomes, held-out ROC-AUC, lift, feature contract, and active model version | Metrics come from the persisted model card and dataset aggregates |
 | Opportunity workbench | Search and page through 77,970 opportunities, select up to 20 records, run batch scoring, and open a selected record in LeadFlow | Calibrated XGBoost owns the 0–100 score; deterministic policy owns priority and next action |
 | Model inspection | View predicted win probability, positive and negative TreeSHAP factors, routing explanation, and cache/model versions | Factors are derived from the model margin and aggregated back to source business fields |
-| LeadFlow inbox | Attach an inquiry to an opportunity, classify it, filter six action queues, inspect uncertainty and disagreements, and manage workflow status | Jev supplies semantic judgments; Python policy owns the action, priority, reason, and outreach prohibition |
-| CRM command bar | Use natural language to retrieve, inspect, score, summarize, and update supported records with current UI selection as context | Jev selects from six approved tools; Python validates arguments, executes tools, and requires confirmation before command-driven writes |
+| LeadFlow inbox | Attach an inquiry to an opportunity, classify it against the dataset-derived catalog hierarchy, filter six action queues, inspect escalation, uncertainty, and priority provenance, and manage workflow status | Jev supplies semantic and human-review judgments; Python policy owns the action, safely composes ML propensity into selected priorities, and prohibits automated outreach |
+| CRM command bar | Use natural language to retrieve, inspect, score, summarize, and update supported records with current UI selection as context | Jev selects from six approved tools and judges requested effect/confirmation sensitivity; Python cross-checks, validates, executes, and requires confirmation before command-driven writes |
 | Verified analytics | Ask for supported win-rate comparisons, exact-filter summaries, and highest-value opportunities | Deterministic calculations run over the complete matching population and report their scope |
 | Grounded explanations | Request an optional narrative of an opportunity score and missing information | The language model can write narrative text only; the application preserves the score, factors, model version, and routing |
 | Reliability and security | Check health/model readiness, reuse versioned scores and semantic decisions, and operate the public demo without browser-visible credentials | Typed API contracts, input hashes, dataset checksums, atomic persistence, CORS restrictions, request limits, and server-only secrets protect trust boundaries |
@@ -99,16 +99,36 @@ runtime flow and component contracts.
 
 ## Where Jev is useful
 
-Jev is used for two bounded semantic decisions:
+Jev supports six product capabilities through two focused, shared-state
+evaluations. Questions that depend on the same input are evaluated together so
+their distributions form one inspectable semantic decision rather than a chain
+of disconnected model calls.
 
-1. **Inquiry understanding.** One evaluation asks independent questions over a
-   shared inquiry state: main intent, catalog product interest, purchase
-   timeline, explicit urgency, concrete purchase requirement, and missing
-   qualification information. Choice answers retain their probability
-   distributions; boolean/Noul answers retain their probability.
-2. **CRM command interpretation.** One evaluation selects one of six approved
-   tools and supported categorical arguments such as region, product group,
-   action queue, workflow status, or summary dimension.
+| Capability | Jev judgment | Application-owned control |
+| --- | --- | --- |
+| Intent classification | Main customer intent with a complete Choice distribution | Python validates the typed result and applies safety overrides |
+| Workflow routing | Product, timing, urgency, purchase requirement, and missing-information evidence | Deterministic policy maps the evidence to six action queues; XGBoost can adjust only qualification/nurture priority |
+| Human escalation | Human-review Noul probability plus an escalation-reason Choice | Support and opt-out remain overrides; policy thresholds route ambiguous, conflicting, unsupported, or safety-sensitive requests to a person |
+| Confirmation detection | Requested-effect Choice and confirmation-sensitivity Noul probability | Python cross-checks effect against tool metadata; Jev may require more caution but can never waive confirmation |
+| Tool selection | One of six approved tools or `unknown`, with confidence and supported arguments | The allow-listed Python registry validates scope and performs the operation |
+| Workflow state | Requested target status and action queue | Python loads current status, shows current→target transitions, skips no-ops, creates a single-use confirmation, and persists history |
+
+The two Jev evaluations are:
+
+1. **Inquiry understanding.** One evaluation asks eight independent questions
+   over a shared inquiry state: main intent, catalog product interest grounded
+   by the current group/subgroup hierarchy, purchase timeline, explicit
+   urgency, concrete purchase requirement, missing qualification information,
+   human-review requirement, and escalation reason.
+2. **CRM command interpretation.** One evaluation selects an approved tool,
+   requested effect, confirmation sensitivity, and supported categorical
+   arguments such as region, product group, action queue, workflow status, or
+   summary dimension. Product-filter choices reuse the same group/subgroup
+   hierarchy, while Python resolves the result to an exact supported parent
+   filter.
+
+Choice answers retain their full probability distributions; boolean/Noul
+answers retain their probability.
 
 Jev does **not** calculate or modify the ML win probability, TreeSHAP factors,
 workflow action, analytics result, opportunity data, or workflow status. Python
@@ -138,15 +158,19 @@ separate from deterministic business logic and side effects.
 1. Enter non-sensitive inquiry text and choose **Classify & route**.
 2. Jev returns semantic judgments; the existing ML service independently
    supplies the linked opportunity score.
-3. Python workflow policy composes both inputs into quote request,
-   qualification, nurture, support, do-not-contact, or human-review action.
-4. Inspect the original text, separate ML/Jev/policy cards, reason, uncertainty,
-   disagreement, provider/model, and question/policy versions.
+3. Python workflow policy maps Jev evidence to quote request, qualification,
+   nurture, support, do-not-contact, or human-review action. An explicit Jev
+   escalation judgment or low intent confidence can require human review. ML
+   propensity may adjust only qualification or nurture priority within defined
+   safety bounds.
+4. Inspect the original text, separate ML/Jev/policy cards, action and priority
+   reasons, semantic base and final priority, escalation probability/reason,
+   uncertainty, disagreement, provider/model, and question/policy versions.
 5. Filter queues and statuses or update a status directly in the inbox. Direct
    inbox status changes apply immediately; command-bar status changes use the
    preview-and-confirm flow.
 
-![LeadFlow decision inspector separating calibrated ML, Jev semantic judgment, and workflow policy](docs/images/leadflow-decision-inspector.png)
+![LeadFlow decision inspector showing an explicit Jev human-escalation judgment beside calibrated ML and application policy](docs/images/leadflow-decision-inspector.png)
 
 ### Use the CRM command bar
 
@@ -159,17 +183,20 @@ The persistent command bar exposes this allow-listed registry:
 | `score_opportunities` | Score selected records or explicit record IDs | Requires valid IDs and limits a command to 20 records |
 | `explain_opportunity` | Return the existing score, TreeSHAP factors, and routing for one record | Uses model-owned evidence; optional narrative generation cannot replace it |
 | `summarize_portfolio` | Compare approved win-rate dimensions or rank opportunities | Calculates over the full matching dataset population |
-| `update_workflow_status` | Change selected inquiries to a supported workflow status | Creates a single-use preview token and writes only after **Confirm change** |
+| `update_workflow_status` | Change selected inquiries to a supported workflow status | Shows every current→target transition, skips records already at the target, creates a single-use preview token, and writes only after **Confirm change** |
 
 Selection-aware commands can use checked opportunities or inquiries. Explicit
 record and inquiry IDs are parsed deterministically. Results show the chosen
 tool, confidence, interpreted arguments, matching scope, and every record
 returned by the backend. Unsupported dates, missing IDs, invalid IDs, unclear
-intent, and low-confidence tool choices produce clarification instead of an
-unsafe guess. Status writes create a server-side preview token and remain
-unchanged until **Confirm change** is selected.
+intent, low-confidence tool choices, and disagreement between the
+Jev-requested effect and selected tool produce clarification instead of an
+unsafe guess. The decision trace displays requested effect, effect confidence,
+confirmation sensitivity, and the application-owned confirmation reason.
+Status writes create a server-side preview token and remain unchanged until
+**Confirm change** is selected; Jev cannot waive that requirement.
 
-![CRM command bar with its six approved natural-language workflow suggestions](docs/images/crm-command-bar.png)
+![CRM command bar showing Jev requested-effect and confirmation judgments with a current-to-target workflow preview](docs/images/crm-command-bar.png)
 
 ### Ask verified analytics questions
 
@@ -221,6 +248,19 @@ single reporting period and does not contain event timestamps, account IDs, or
 unstructured communications. Evaluation therefore uses group-disjoint splits
 by opportunity number.
 
+LeadFlow derives its Jev catalog choices from the same dataset:
+
+| Product group | Catalog subgroups supplied as semantics |
+| --- | --- |
+| Car Accessories | Batteries & Accessories; Exterior Accessories; Garage & Car Care; Interior Accessories; Replacement Parts; Towing & Hitches |
+| Car Electronics | Car Electronics |
+| Performance & Non-auto | Motorcycle Parts; Performance Parts; Shelters & RV |
+| Tires & Wheels | Tires & Wheels |
+
+The hierarchy is included in the shared Jev state and in product-choice
+criteria. Its hash participates in the semantic cache key, so a catalog change
+cannot silently reuse a judgment made against older product semantics.
+
 LeadFlow semantic and policy behavior is exercised against 36 labeled synthetic
 inquiries spanning quote requests, product-fit questions, research, support,
 opt-out, and ambiguous messages. These fixtures are independent of historical
@@ -261,6 +301,24 @@ The calibration population determines two routing thresholds:
 - Medium priority: above the calibration-set median, routed to nurture
 - Low priority: below the calibration-set median
 
+LeadFlow workflow policy keeps operational intent in control. Opt-out and
+support override every ML route, explicit Jev escalation or low-confidence
+main intent goes to human review, and explicit urgency cannot be downgraded.
+Jev evidence determines the action family through deterministic policy. The
+calibrated ML route can adjust priority only for qualification and nurture:
+
+| Action | Calibrated ML route | Bounded priority effect |
+| --- | --- | --- |
+| Qualification | Sales review | Medium may rise to high |
+| Qualification | Nurture or low priority | Never falls below medium |
+| Nurture | Sales review | Low may rise to medium |
+| Nurture | Low priority | Medium may fall to low |
+| Quote, support, do not contact, or human review | Any | No ML priority adjustment |
+
+Every workflow response records the semantic base priority, final priority,
+adjustment, priority reason, and human-escalation provenance under
+`leadflow-policy-v3`.
+
 Automated outreach is disabled for every route. The optional LLM endpoint uses
 a typed response envelope: score, probability, TreeSHAP factors, model version,
 and routing are copied from verified application services. Only the explanation
@@ -290,7 +348,8 @@ LeadFlow accepts an inquiry linked to an existing opportunity record. The
 inquiry is stored with the active dataset checksum so a future dataset change
 cannot silently reassign it. Jev-style semantic judgments are kept separate
 from the calibrated ML win probability; deterministic workflow policy owns the
-resulting action and priority. No inquiry text, outcome label, or completed
+resulting action and priority. Jev product judgment uses the 4-group, 11-subgroup
+catalog derived from the dataset. No inquiry text, outcome label, or completed
 sales-cycle field is sent to the ML model, and automated outreach is disabled.
 
 The default provider is `TYPESAFE_MODE=demo`. It is deterministic, offline,
@@ -359,7 +418,8 @@ AI Gateway provides the supported hosted-provider path through evaluation model
 Gateway's boolean answers to this API's Noul contract and records that
 confidence was computed by the adapter from the returned distribution.
 
-For a local one-request smoke test, create the ignored file
+For a local two-request smoke test—one inquiry decision and one mutation-command
+decision—create the ignored file
 `frontend/.env.local`:
 
 ```bash
@@ -372,8 +432,8 @@ Then run:
 npm --prefix frontend run test:jev-gateway
 ```
 
-The command prints only the returned model, sample classification,
-probabilities, and token usage. It never prints the key. The React browser does
+The command prints only the returned model, sample judgments, probabilities,
+and token usage. It never prints the key. The React browser does
 not use this variable.
 
 For the complete local browser flow, keep the key only in the same ignored
@@ -402,6 +462,11 @@ reports Jev mode `gateway`, model `typesafe-ai/jev`, and `demo: false`. Each
 new inquiry classification and each CRM command consumes one Gateway
 evaluation. Reading queues, scoring with XGBoost, applying an already-issued
 confirmation, and using verified analytics do not consume Jev credits.
+
+The deterministic policy uses `LEADFLOW_CONFIDENCE_THRESHOLD=0.55` for the
+main-intent confidence gate and `LEADFLOW_HUMAN_REVIEW_THRESHOLD=0.65` for
+Jev's explicit escalation probability. Both are backend-only configuration;
+changing them never changes the model prompt or lets Jev execute an action.
 
 For a deployed live configuration, set `AI_GATEWAY_API_KEY` and a new random
 `JEV_ADAPTER_TOKEN` as Vercel server environment variables. Set the same
@@ -487,10 +552,12 @@ npm --prefix frontend run test:adapter
 
 The test suite covers dataset normalization, leakage exclusions, calibrated
 scoring, source-level TreeSHAP factors, cache invalidation, policy safety,
-analytics scope, LeadFlow labels and routing, command arguments and scope,
-preview-before-apply status changes, Gateway adapter normalization, health,
-and the end-to-end HTTP contract. The live smoke test is intentionally
-separate because it consumes one Gateway request and needs a user-owned key.
+analytics scope, dataset-derived product taxonomy, bounded hybrid priority
+composition, explicit human escalation, LeadFlow labels and routing, command
+effect/tool consistency, confirmation sensitivity, current→target transition
+previews, no-op handling, Gateway adapter normalization, health, and the
+end-to-end HTTP contract. The live smoke test is intentionally separate because
+it consumes two Gateway requests and needs a user-owned key.
 
 ## Repository structure
 
@@ -508,7 +575,7 @@ backend/
 frontend/
   src/                     React dashboard and API client
   api/jev.js               Server-only Vercel Gateway evaluation adapter
-  scripts/test-jev-gateway.js  One-request live Gateway smoke test
+  scripts/test-jev-gateway.js  Two-request inquiry/command Gateway smoke test
 docs/
   hybrid-architecture.md   System architecture and decision contracts
   images/                  Product screenshots used by this README
