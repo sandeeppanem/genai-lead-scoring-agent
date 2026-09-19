@@ -1,4 +1,4 @@
-# Current System Architecture
+# System Architecture
 
 ## System objective
 
@@ -72,6 +72,41 @@ flowchart TD
     PC --> WF
     WF --> INQUIRIES
 ```
+
+## Deployment topology and trust boundaries
+
+```mermaid
+flowchart LR
+    USER[Anonymous browser]
+
+    subgraph Vercel
+        WEB[React production build]
+        ADAPTER[Protected /api/jev function]
+    end
+
+    subgraph Render
+        API[FastAPI service]
+        MODEL[(Model and dataset artifacts)]
+        STATE[(SQLite workflow state and JSON score cache)]
+    end
+
+    GW[Vercel AI Gateway]
+    JEV[typesafe-ai/jev]
+
+    USER -->|HTTPS application assets| WEB
+    USER -->|HTTPS, CORS-restricted| API
+    API -->|Shared adapter token| ADAPTER
+    ADAPTER -->|Server-only Gateway key| GW
+    GW --> JEV
+    API --> MODEL
+    API --> STATE
+```
+
+The browser receives neither provider credential nor the server-to-server
+adapter token. Render validates public request shapes and rate limits anonymous
+writes. The Vercel adapter authenticates Render, constrains evaluation payload
+size and question count, applies a timeout, and normalizes Gateway results into
+the backend's typed semantic contract.
 
 ## Scoring sequence
 
@@ -263,13 +298,14 @@ Python functions with typed responses.
 
 ## User-facing surfaces
 
-| Surface | What a user can do | External semantic cost |
-| --- | --- | --- |
-| Model dashboard | Review population, observed performance, model metrics, and model contract | None |
-| Opportunities | Search, select, batch score, inspect score factors, and open LeadFlow with record context | None |
-| LeadFlow inbox | Create/classify inquiries, inspect three decision layers, filter queues, and manage status | One Jev evaluation per new uncached inquiry |
-| CRM command bar | Run one of six approved tools with selection context and confirm status writes | One Jev evaluation per command; confirmation itself is free |
-| Verified analytics | Ask approved portfolio aggregation and ranking questions | None |
+| Surface | Capabilities | Decision source | External semantic cost |
+| --- | --- | --- | --- |
+| Model dashboard | Dataset profile, observed outcomes, held-out ROC-AUC, lift, feature contract, and model version | Dataset aggregates and persisted model card | None |
+| Opportunities | Search, pagination, multi-select, batch scoring, calibrated probability, policy route, TreeSHAP factor inspection, and direct LeadFlow navigation | Data service, calibrated XGBoost, TreeSHAP, and deterministic scoring policy | None |
+| LeadFlow inbox | Linked inquiry creation, six action queues, priority/status filters, full-text inspection, semantic uncertainty, ML/Jev disagreement, policy reason, and status management | Jev semantic evaluation plus deterministic workflow policy and persisted history | One Jev evaluation per new uncached inquiry |
+| CRM command bar | Selection-aware use of six approved tools, interpreted arguments, result scope, clarification, and preview/confirmation for status writes | Jev tool/choice selection plus Python validation and execution | One Jev evaluation per command; confirmation itself is free |
+| Verified analytics | Supported portfolio summaries, highest-value ranking, exact filters, and observed win-rate comparisons by business dimension | Deterministic full-population analytics | None |
+| Grounded explanation API | Narrative score explanation and missing-information summary | Optional LLM wording wrapped around immutable ML and policy evidence | One explanation call when explicitly enabled |
 
 ## Decision ownership
 
@@ -285,7 +321,7 @@ Python functions with typed responses.
 | Status mutation | SQLite service after explicit confirmation |
 | Optional narrative wording | Disabled-by-default explanation LLM |
 
-## Operational controls
+## Security and reliability controls
 
 - CORS origins are environment-configured and methods are restricted.
 - API keys are loaded from environment variables and are never logged.
@@ -303,22 +339,19 @@ Python functions with typed responses.
 - Gateway transport mode is normalized to public provider mode `live`; `demo`
   remains explicit in every response and UI badge.
 
-## Current limitations
+## System boundaries
 
-- SQLite and the JSON score cache require a Render persistent disk or migration
-  to a managed database for durable multi-instance deployment.
-- The rate limiter is process-local rather than distributed.
-- Browser interactions are manually verified; automated coverage currently
-  targets services, API contracts, adapter normalization, and production build.
-- Live semantic accuracy needs a labeled evaluation set and threshold/taxonomy
-  tuning. Application uncertainty handling is implemented, but it cannot make
-  an uncertain provider judgment intrinsically correct.
-- The Opportunities table exposes TreeSHAP factors through a hover tooltip;
-  LeadFlow currently displays the score and routing but not the full factor list.
-- Direct inbox status edits apply immediately, while command-bar edits require
-  preview and confirmation.
-- Gateway confidence is application-derived from the returned choice
-  distribution; direct TypeSafe revision parity is not claimed.
-- The source has no timestamps or real historical inquiry text. Date filtering,
-  temporal backtesting, account-level journeys, and automated outreach are out
-  of scope.
+- The source represents a single reporting-period sample and has no event
+  timestamps, account identities, or unstructured historical communications.
+  Date filtering, temporal claims, and account-level journeys are therefore not
+  part of the application contract.
+- Inquiry text is supplied by the user and stored separately from the source
+  dataset with record and checksum binding.
+- Jev outputs are probabilistic semantic judgments, not conversion
+  probabilities. Confidence and uncertainty remain visible, and deterministic
+  application policy owns the resulting workflow action.
+- Workflow state, history, confirmation tokens, and semantic cache entries are
+  stored transactionally in SQLite. Score results use a versioned, input-hashed
+  atomic JSON cache.
+- Actions remain inside the application; automated customer outreach is
+  disabled for every route.
