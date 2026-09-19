@@ -13,42 +13,20 @@ the opportunities most likely to convert. This application converts historical
 sales outcomes and qualification-time attributes into an auditable 0–100 score,
 a prioritized workflow, and portfolio-level analytics.
 
-The application provides:
+## Product capabilities
 
-- Calibrated win probabilities and 0–100 opportunity scores
-- Batch scoring for selected opportunities
-- Positive and negative TreeSHAP factors for every prediction
-- Capacity-based routing to sales review, nurture, or low priority
-- Optional Claude explanations grounded in the score, factors, and policy
-- Verified conversational analytics over the complete matching population
-- A React dashboard for model metrics, portfolio analytics, and scoring
-- Versioned, input-hashed score caching with atomic local persistence
-- Health and model-card endpoints for operational visibility
-- LeadFlow inquiry classification into quote, qualification, nurture, support,
-  do-not-contact, and human-review queues
-- A confirmation-gated CRM command bar backed by an allow-listed tool registry
+| Product area | What users can do | Evidence and control |
+| --- | --- | --- |
+| Model dashboard | Review the source population, observed business outcomes, held-out ROC-AUC, lift, feature contract, and active model version | Metrics come from the persisted model card and dataset aggregates |
+| Opportunity workbench | Search and page through 77,970 opportunities, select up to 20 records, run batch scoring, and open a selected record in LeadFlow | Calibrated XGBoost owns the 0–100 score; deterministic policy owns priority and next action |
+| Model inspection | View predicted win probability, positive and negative TreeSHAP factors, routing explanation, and cache/model versions | Factors are derived from the model margin and aggregated back to source business fields |
+| LeadFlow inbox | Attach an inquiry to an opportunity, classify it, filter six action queues, inspect uncertainty and disagreements, and manage workflow status | Jev supplies semantic judgments; Python policy owns the action, priority, reason, and outreach prohibition |
+| CRM command bar | Use natural language to retrieve, inspect, score, summarize, and update supported records with current UI selection as context | Jev selects from six approved tools; Python validates arguments, executes tools, and requires confirmation before command-driven writes |
+| Verified analytics | Ask for supported win-rate comparisons, exact-filter summaries, and highest-value opportunities | Deterministic calculations run over the complete matching population and report their scope |
+| Grounded explanations | Request an optional narrative of an opportunity score and missing information | The language model can write narrative text only; the application preserves the score, factors, model version, and routing |
+| Reliability and security | Check health/model readiness, reuse versioned scores and semantic decisions, and operate the public demo without browser-visible credentials | Typed API contracts, input hashes, dataset checksums, atomic persistence, CORS restrictions, request limits, and server-only secrets protect trust boundaries |
 
-## Current implementation status
-
-The requested local MVP is implemented end to end. The current branch has been
-verified with 22 backend tests, five Gateway-adapter tests, a production
-frontend build, a live inquiry classification, and all six live CRM command
-tools using Vercel AI Gateway model `typesafe-ai/jev`.
-
-| Capability | Current state |
-| --- | --- |
-| Model dashboard, opportunity search, scoring, TreeSHAP, and routing | Implemented and tested |
-| Opportunity-to-LeadFlow navigation without memorizing record IDs | Implemented and tested |
-| Live or deterministic-demo inquiry classification | Implemented and tested |
-| Six action queues, filters, status, uncertainty, and decision inspection | Implemented and tested |
-| Six approved CRM tools with validated arguments and result scope | Implemented and live-tested |
-| Preview and explicit confirmation for command-bar status changes | Implemented and tested |
-| Verified analytics over the complete matching population | Implemented and tested |
-| Public-safe default with optional LLM explanations disabled | Implemented |
-
-Live-provider success proves the integration path, not that every semantic
-classification will be correct. Low-confidence answers remain visible and are
-routed conservatively by application policy.
+![LeadFlow model dashboard with portfolio metrics and regional performance](docs/images/model-dashboard.png)
 
 ## Architecture
 
@@ -101,7 +79,7 @@ runtime flow and component contracts.
 
 | Component | Responsibility |
 | --- | --- |
-| React frontend | Model dashboard, opportunity selection, inquiry composer and inbox, command bar, and analytics |
+| React frontend | Model dashboard, opportunity workbench, score-factor inspection, LeadFlow composer and inbox, command bar, and verified analytics |
 | FastAPI backend | Typed API contracts, orchestration, health checks, and error handling |
 | Data service | B2B dataset loading, normalization, pagination, search, and aggregates |
 | Feature pipeline | Identical categorical and numerical transformations for training and inference |
@@ -114,8 +92,10 @@ runtime flow and component contracts.
 | Score storage | Stores model-versioned and input-hashed results using atomic file replacement |
 | Inquiry service | Stores inquiry text, dataset binding, decisions, workflow status, and history in SQLite |
 | Jev service | Runs deterministic demo judgments or optional live TypeSafe/Gateway evaluations |
+| Vercel Jev adapter | Authenticates server-to-server requests, calls AI SDK evaluation, constrains payloads, and normalizes Gateway responses |
 | Workflow policy | Composes semantic judgments with ML evidence into application-owned actions |
 | Command service | Maps requests to approved tools, validates arguments, and previews writes |
+| Public-write guard | Applies per-client request limits to anonymous inquiry, command, confirmation, and status writes |
 
 ## Where Jev is useful
 
@@ -151,6 +131,8 @@ separate from deterministic business logic and side effects.
    the record ID prefilled and a confirmation banner showing opportunity,
    product, region, and route-to-market context.
 
+![Opportunity workbench showing a calibrated score, policy route, and TreeSHAP factor tooltip](docs/images/opportunities.png)
+
 ### Classify and route an inquiry
 
 1. Enter non-sensitive inquiry text and choose **Classify & route**.
@@ -164,16 +146,20 @@ separate from deterministic business logic and side effects.
    inbox status changes apply immediately; command-bar status changes use the
    preview-and-confirm flow.
 
+![LeadFlow decision inspector separating calibrated ML, Jev semantic judgment, and workflow policy](docs/images/leadflow-decision-inspector.png)
+
 ### Use the CRM command bar
 
-The persistent command bar supports only:
+The persistent command bar exposes this allow-listed registry:
 
-- `list_opportunities`
-- `show_action_queue`
-- `score_opportunities`
-- `explain_opportunity`
-- `summarize_portfolio`
-- `update_workflow_status`
+| Tool | Supported operation | Safety behavior |
+| --- | --- | --- |
+| `list_opportunities` | Filter opportunities by supported dataset dimensions | Reports matching population, returned count, and whether the result is complete |
+| `show_action_queue` | Retrieve LeadFlow items by action and urgency | Uses persisted inquiry decisions and returns explicit queue scope |
+| `score_opportunities` | Score selected records or explicit record IDs | Requires valid IDs and limits a command to 20 records |
+| `explain_opportunity` | Return the existing score, TreeSHAP factors, and routing for one record | Uses model-owned evidence; optional narrative generation cannot replace it |
+| `summarize_portfolio` | Compare approved win-rate dimensions or rank opportunities | Calculates over the full matching dataset population |
+| `update_workflow_status` | Change selected inquiries to a supported workflow status | Creates a single-use preview token and writes only after **Confirm change** |
 
 Selection-aware commands can use checked opportunities or inquiries. Explicit
 record and inquiry IDs are parsed deterministically. Results show the chosen
@@ -183,12 +169,16 @@ intent, and low-confidence tool choices produce clarification instead of an
 unsafe guess. Status writes create a server-side preview token and remain
 unchanged until **Confirm change** is selected.
 
+![CRM command bar with its six approved natural-language workflow suggestions](docs/images/crm-command-bar.png)
+
 ### Ask verified analytics questions
 
 The **Verified analytics** pane supports allow-listed portfolio summaries,
 highest-value opportunities, and observed win rates by region, route to market,
 product group, or competitor status. Its calculations are deterministic and do
 not call Jev or an explanation LLM.
+
+![Verified conversational analytics with a full-population result and reported scope](docs/images/verified-analytics.png)
 
 ## Prediction contract
 
@@ -230,6 +220,12 @@ The source, checksum, usage note, and field policy are documented in
 single reporting period and does not contain event timestamps, account IDs, or
 unstructured communications. Evaluation therefore uses group-disjoint splits
 by opportunity number.
+
+LeadFlow semantic and policy behavior is exercised against 36 labeled synthetic
+inquiries spanning quote requests, product-fit questions, research, support,
+opt-out, and ambiguous messages. These fixtures are independent of historical
+win/loss labels and live in
+[`backend/data/leadflow_synthetic_inquiries.json`](backend/data/leadflow_synthetic_inquiries.json).
 
 ## Model training and evaluation
 
@@ -356,9 +352,9 @@ in the downloadable browser bundle.
 
 ### Optional live Jev through Vercel AI Gateway
 
-Direct TypeSafe API access is optional and requires `TYPESAFE_API_KEY`. When
-that access is waitlisted, the supported live path is Vercel AI Gateway's
-evaluation model `typesafe-ai/jev`. Evaluation uses AI SDK 7's
+Direct TypeSafe API access is optional and requires `TYPESAFE_API_KEY`. Vercel
+AI Gateway provides the supported hosted-provider path through evaluation model
+`typesafe-ai/jev`. Evaluation uses AI SDK 7's
 `experimental_evaluate`, not `generateText`; the server adapter normalizes
 Gateway's boolean answers to this API's Noul contract and records that
 confidence was computed by the adapter from the returned distribution.
@@ -446,31 +442,28 @@ allows any `localhost` or `127.0.0.1` development port plus deployment URLs
 belonging to this project's Vercel name; override `CORS_ALLOWED_ORIGINS` or
 `CORS_ALLOWED_ORIGIN_REGEX` when using a different domain.
 
-The frontend and backend must be deployed from the same revision. Verify a
-deployment before testing the UI:
+Deploy the frontend and backend from the same revision. The public services
+are:
+
+- Application: `https://genai-lead-scoring-agent.vercel.app/`
+- API: `https://genai-lead-scoring-agent.onrender.com/api`
+
+Verify service readiness before testing the UI:
 
 ```bash
 curl https://genai-lead-scoring-agent.onrender.com/api/health
 curl https://genai-lead-scoring-agent.onrender.com/api/model
 ```
 
-The health response should report 77,970 data records and an operational ML
-model. A `404` from `/api/model` means Render is still running the retired lead
-API and must be redeployed from the current `master` branch.
+The health response reports data and model readiness, LeadFlow storage status,
+the public-write guard, and the active Jev transport. In the live Gateway
+configuration, it reports model `typesafe-ai/jev` with `demo: false`.
 
-For anonymous access, share the public production domain:
-`https://genai-lead-scoring-agent.vercel.app/`. Deployment-specific preview
-URLs can remain protected by Vercel Authentication and should not be used as
-the public link. If the production domain is ever protected, limit any change
-under the project's Deployment Protection settings to production access rather
-than making private previews public.
-
-The public frontend contains only the Render API URL. Keep
-`ENABLE_LLM_EXPLANATIONS=false` on the public backend and remove
-`ANTHROPIC_API_KEY` from that Render service. The scoring and verified analytics
-paths remain fully functional without it. The public API does not expose a cache
-deletion operation, and scoring requests are capped at the 20 records visible on
-one UI page.
+The public frontend contains only the Render API URL. The public backend uses
+`ENABLE_LLM_EXPLANATIONS=false` and does not configure `ANTHROPIC_API_KEY`.
+Scoring and verified analytics remain fully functional without that optional
+provider. The public API does not expose a cache deletion operation, and
+scoring requests are capped at the 20 records visible on one UI page.
 
 ## Train the model
 
@@ -499,51 +492,6 @@ preview-before-apply status changes, Gateway adapter normalization, health,
 and the end-to-end HTTP contract. The live smoke test is intentionally
 separate because it consumes one Gateway request and needs a user-owned key.
 
-The current local verification completed on September 19, 2026:
-
-- 22 backend tests passed.
-- Five adapter tests passed.
-- The optimized React production build passed.
-- FastAPI, the local adapter, and `typesafe-ai/jev` completed a live inquiry.
-- All six approved CRM tools were exercised from the browser in live mode.
-- A Gateway-mode status preview and confirmation completed successfully; a
-  regression test now enforces the public `provider_mode: live` contract.
-
-## Remaining production work and limitations
-
-No requested MVP feature is intentionally stubbed, but the following work
-remains before treating the public demo as a durable multi-instance production
-CRM:
-
-- Merge this branch and deploy the same revision to both Vercel and Render.
-- Give Render a persistent disk for SQLite or migrate inquiries, history,
-  confirmations, and semantic cache to PostgreSQL. The default Render
-  filesystem can be replaced during deploys.
-- Replace the process-local anonymous write limiter with a shared store such as
-  Redis before running multiple backend workers.
-- Add a browser-level end-to-end suite. Service, API-contract, adapter, build,
-  and manual live paths are covered today, but browser interactions are still
-  manually verified.
-- Establish a small labeled live-Jev evaluation set and tune taxonomy prompts
-  and confidence thresholds. For example, a live battery inquiry produced a
-  low-confidence product classification; the UI and policy handled the
-  uncertainty safely, but semantic quality still needs measurement.
-- Add explicit Gateway budgets/alerts before broad anonymous usage. The public
-  write limiter reduces abuse but is not a billing quota.
-- Consider an explicit **View factors** control and showing ML factors inside
-  LeadFlow. Factors are currently available through the Opportunities score
-  tooltip and API response.
-- Direct inbox status changes apply immediately; only command-bar status
-  changes are previewed. Use one consistent confirmation policy if the product
-  requirement expands beyond the current MVP.
-- Gateway Choice confidence is computed by the adapter from the returned
-  distribution. It is not a native direct-TypeSafe confidence value.
-- The dataset has no event timestamps, account identities, or real inquiry
-  history, so historical date filtering and temporal validation are not
-  claimed.
-- Optional generative explanations remain disabled on the public deployment.
-  ChatGPT Plus is not an API credential and cannot enable that endpoint.
-
 ## Repository structure
 
 ```text
@@ -553,6 +501,7 @@ backend/
     ml/                    Shared feature contract
     services/              Data, scoring, LeadFlow, policy, LLM, analytics, commands, and cache
   data/b2b/                Active B2B dataset and source documentation
+  data/leadflow_synthetic_inquiries.json  Labeled LeadFlow behavior fixtures
   models/                  Trained XGBoost artifact and model card
   scripts/train_model.py   Reproducible training pipeline
   tests/                   Service and HTTP contract tests
@@ -561,5 +510,6 @@ frontend/
   api/jev.js               Server-only Vercel Gateway evaluation adapter
   scripts/test-jev-gateway.js  One-request live Gateway smoke test
 docs/
-  hybrid-architecture.md   Detailed current architecture
+  hybrid-architecture.md   System architecture and decision contracts
+  images/                  Product screenshots used by this README
 ```
