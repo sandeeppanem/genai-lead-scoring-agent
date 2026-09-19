@@ -197,6 +197,8 @@ class InquiryService:
             if missing:
                 raise KeyError(f"Inquiry IDs not found: {missing}")
             for inquiry_id in inquiry_ids:
+                if found[inquiry_id] == new_status:
+                    continue
                 connection.execute(
                     "UPDATE inquiries SET status = ?, updated_at = ? WHERE id = ?",
                     (new_status, now, inquiry_id),
@@ -214,19 +216,11 @@ class InquiryService:
 
     def create_pending_status_change(
         self, inquiry_ids: List[int], new_status: str
-    ) -> str:
-        if new_status not in self.STATUSES:
-            raise ValueError(f"Unsupported workflow status: {new_status}")
-        existing = [
-            self.get_inquiry_payload(inquiry_id) for inquiry_id in inquiry_ids
-        ]
-        if any(item is None for item in existing):
-            missing = [
-                inquiry_id
-                for inquiry_id, item in zip(inquiry_ids, existing)
-                if item is None
-            ]
-            raise KeyError(f"Inquiry IDs not found: {missing}")
+    ) -> Dict[str, Any]:
+        preview = self.preview_status_change(inquiry_ids, new_status)
+        actionable_ids = preview["actionable_inquiry_ids"]
+        if not actionable_ids:
+            return {**preview, "confirmation_id": None}
         confirmation_id = uuid.uuid4().hex
         with self._connect() as connection:
             connection.execute(
@@ -235,10 +229,55 @@ class InquiryService:
                     confirmation_id, inquiry_ids_json, new_status, created_at, applied_at
                 ) VALUES (?, ?, ?, ?, NULL)
                 """,
-                (confirmation_id, self._dump(inquiry_ids), new_status, self._now()),
+                (
+                    confirmation_id,
+                    self._dump(actionable_ids),
+                    new_status,
+                    self._now(),
+                ),
             )
             connection.commit()
-        return confirmation_id
+        return {**preview, "confirmation_id": confirmation_id}
+
+    def preview_status_change(
+        self, inquiry_ids: List[int], new_status: str
+    ) -> Dict[str, Any]:
+        if new_status not in self.STATUSES:
+            raise ValueError(f"Unsupported workflow status: {new_status}")
+        if not inquiry_ids:
+            return {
+                "transitions": [],
+                "actionable_inquiry_ids": [],
+                "already_target_ids": [],
+            }
+        placeholders = ",".join("?" for _ in inquiry_ids)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT id, status FROM inquiries WHERE id IN ({placeholders})",
+                inquiry_ids,
+            ).fetchall()
+        current = {int(row["id"]): str(row["status"]) for row in rows}
+        missing = sorted(set(inquiry_ids) - set(current))
+        if missing:
+            raise KeyError(f"Inquiry IDs not found: {missing}")
+        transitions = [
+            {
+                "inquiry_id": inquiry_id,
+                "current_status": current[inquiry_id],
+                "target_status": new_status,
+                "will_change": current[inquiry_id] != new_status,
+            }
+            for inquiry_id in inquiry_ids
+        ]
+        return {
+            "transitions": transitions,
+            "actionable_inquiry_ids": [
+                item["inquiry_id"] for item in transitions if item["will_change"]
+            ],
+            "already_target_ids": [
+                item["inquiry_id"] for item in transitions if not item["will_change"]
+            ],
+        }
 
     def apply_pending_status_change(self, confirmation_id: str) -> Dict[str, Any]:
         with self._lock, self._connect() as connection:
@@ -255,7 +294,10 @@ class InquiryService:
                 raise ValueError("This status change has already been applied")
             inquiry_ids = [int(value) for value in json.loads(row["inquiry_ids_json"])]
             new_status = str(row["new_status"])
-            self.update_status(inquiry_ids, new_status)
+            preview = self.preview_status_change(inquiry_ids, new_status)
+            updated_ids = self.update_status(
+                preview["actionable_inquiry_ids"], new_status
+            )
             applied_at = self._now()
             connection.execute(
                 "UPDATE pending_changes SET applied_at = ? WHERE confirmation_id = ?",
@@ -263,8 +305,11 @@ class InquiryService:
             )
             connection.commit()
         return {
-            "inquiry_ids": inquiry_ids,
+            "inquiry_ids": updated_ids,
+            "requested_inquiry_ids": inquiry_ids,
             "status": new_status,
+            "transitions": preview["transitions"],
+            "already_target_ids": preview["already_target_ids"],
             "applied_at": applied_at,
         }
 

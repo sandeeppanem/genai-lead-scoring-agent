@@ -81,6 +81,8 @@ class LeadFlowTest(unittest.TestCase):
         ]
         for text, expected_action in cases:
             semantic = self.jev_service.classify_inquiry(text, taxonomy)
+            semantic["human_review_required"] = {"probability": 0.99}
+            semantic["escalation_reason"]["value"] = "safety_sensitive"
             for route, score in (("low_priority", 5), ("sales_review", 90)):
                 with self.subTest(text=text, route=route):
                     workflow = self.policy.decide(
@@ -172,6 +174,30 @@ class LeadFlowTest(unittest.TestCase):
         self.assertEqual(workflow["priority"], "medium")
         self.assertEqual(workflow["ml_priority_adjustment"], "not_applicable")
 
+    def test_explicit_jev_escalation_routes_high_confidence_intent_to_human_review(self):
+        semantic = self.jev_service.classify_inquiry(
+            "Are these replacement batteries suitable for our fleet?",
+            self.data_service.product_taxonomy(),
+        )
+        semantic["human_review_required"] = {"probability": 0.91}
+        semantic["escalation_reason"] = {
+            "value": "safety_sensitive",
+            "probabilities": {
+                "none": 0.01,
+                "ambiguous_intent": 0.01,
+                "conflicting_signals": 0.02,
+                "unsupported_request": 0.05,
+                "safety_sensitive": 0.91,
+            },
+            "confidence": 0.9,
+        }
+        workflow = self.policy.decide(
+            semantic, self._ml_score(route="sales_review", score=95)
+        )
+        self.assertEqual(workflow["action"], "human_review")
+        self.assertTrue(workflow["human_escalation_triggered"])
+        self.assertEqual(workflow["human_escalation_reason"], "safety_sensitive")
+
     def test_gateway_question_uses_dataset_catalog_hierarchy(self):
         taxonomy = self.data_service.product_taxonomy()
         captured = {}
@@ -183,6 +209,7 @@ class LeadFlowTest(unittest.TestCase):
                 "main_intent": "quote_request",
                 "product_interest": "car_accessories",
                 "purchase_timeline": "within_30_days",
+                "escalation_reason": "none",
             }
             answers = {}
             for key, question in questions.items():
@@ -198,7 +225,10 @@ class LeadFlowTest(unittest.TestCase):
                         "confidence": 1.0,
                     }
                 else:
-                    answers[key] = {"type": "noul", "noul": 0.9}
+                    answers[key] = {
+                        "type": "noul",
+                        "noul": 0.1 if key == "human_review_required" else 0.9,
+                    }
             return {"model": "typesafe-ai/jev", "answers": answers, "usage": {}}
 
         with patch.dict(
@@ -216,7 +246,8 @@ class LeadFlowTest(unittest.TestCase):
             )
 
         self.assertEqual(decision["product_interest"]["value"], "Car Accessories")
-        self.assertEqual(decision["question_version"], "leadflow-inquiry-v2")
+        self.assertEqual(decision["question_version"], "leadflow-inquiry-v3")
+        self.assertEqual(decision["escalation_reason"]["value"], "none")
         self.assertEqual(captured["state"]["catalog_product_taxonomy"], taxonomy)
         self.assertIn(
             "Batteries & Accessories",
@@ -238,6 +269,7 @@ class LeadFlowTest(unittest.TestCase):
             captured["questions"] = questions
             selections = {
                 "tool": "list_opportunities",
+                "requested_effect": "read_only",
                 "summary_dimension": "not_specified",
                 "queue_action": "not_specified",
                 "workflow_status": "not_specified",
@@ -248,6 +280,9 @@ class LeadFlowTest(unittest.TestCase):
             }
             answers = {}
             for key, question in questions.items():
+                if question["type"] == "noul":
+                    answers[key] = {"type": "noul", "noul": 0.05}
+                    continue
                 selected = selections[key]
                 answers[key] = {
                     "type": "choice",
@@ -277,7 +312,9 @@ class LeadFlowTest(unittest.TestCase):
         self.assertEqual(decision["tool"], "list_opportunities")
         self.assertEqual(decision["arguments"]["region"], "Pacific")
         self.assertEqual(decision["arguments"]["supplies_group"], "Car Accessories")
-        self.assertEqual(decision["question_version"], "leadflow-command-v2")
+        self.assertEqual(decision["question_version"], "leadflow-command-v3")
+        self.assertEqual(decision["requested_effect"]["value"], "read_only")
+        self.assertEqual(decision["confirmation_sensitivity"]["probability"], 0.05)
         self.assertEqual(captured["state"]["catalog_product_taxonomy"], taxonomy)
         self.assertIn(
             "Batteries & Accessories",
@@ -319,6 +356,10 @@ class LeadFlowTest(unittest.TestCase):
         )
         self.assertGreater(listed["scope"]["matching_population"], 20)
         self.assertFalse(listed["scope"]["complete"])
+        self.assertEqual(
+            listed["decision_trace"]["requested_effect"]["value"], "read_only"
+        )
+        self.assertFalse(listed["decision_trace"]["confirmation_required"])
 
         subgroup_listed = self.commands.execute(
             "Show Pacific opportunities for Batteries & Accessories.", [], []
@@ -360,13 +401,67 @@ class LeadFlowTest(unittest.TestCase):
         )
         self.assertTrue(preview["requires_confirmation"])
         self.assertEqual(
+            preview["decision_trace"]["requested_effect"]["value"],
+            "state_change",
+        )
+        self.assertTrue(preview["decision_trace"]["confirmation_required"])
+        self.assertEqual(
+            preview["result"]["transitions"],
+            [
+                {
+                    "inquiry_id": inquiry["id"],
+                    "current_status": "new",
+                    "target_status": "reviewed",
+                    "will_change": True,
+                }
+            ],
+        )
+        self.assertEqual(
             self.leadflow.get_inquiry(inquiry["id"])["status"], "new"
         )
         applied = self.commands.confirm(preview["confirmation_id"])
         self.assertEqual(applied["scope"]["updated"], 1)
+        self.assertEqual(applied["decision_trace"]["source"], "application_policy")
         self.assertEqual(
             self.leadflow.get_inquiry(inquiry["id"])["status"], "reviewed"
         )
+
+        no_op = self.commands.execute(
+            "Mark the selected inquiry as reviewed.", [], [inquiry["id"]]
+        )
+        self.assertFalse(no_op.get("requires_confirmation", False))
+        self.assertEqual(no_op["scope"]["already_target"], 1)
+        self.assertFalse(no_op["result"]["transitions"][0]["will_change"])
+
+    def test_command_effect_mismatch_fails_closed(self):
+        unsafe_decision = {
+            "tool": "list_opportunities",
+            "confidence": 0.98,
+            "probabilities": {},
+            "requested_effect": {
+                "value": "state_change",
+                "probabilities": {
+                    "read_only": 0.01,
+                    "state_change": 0.98,
+                    "unclear": 0.01,
+                },
+                "confidence": 0.97,
+            },
+            "confirmation_sensitivity": {"probability": 0.96},
+            "arguments": {},
+            "provider_mode": "live",
+            "model": "typesafe-ai/jev",
+            "question_version": "leadflow-command-v3",
+            "usage": {},
+        }
+        with patch.object(
+            self.jev_service, "classify_command", return_value=unsafe_decision
+        ):
+            result = self.commands.execute("Change the selected data.", [], [])
+        self.assertEqual(result["tool"], "list_opportunities")
+        self.assertNotIn("result", result)
+        self.assertEqual(result["scope"], {})
+        self.assertIn("did not agree safely", result["decision_trace"]["confirmation_reason"])
 
 
 if __name__ == "__main__":

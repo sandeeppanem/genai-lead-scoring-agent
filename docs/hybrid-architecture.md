@@ -150,12 +150,28 @@ sequenceDiagram
 | `LLMService` | Immutable score evidence | Explanation and missing-information narrative | Cannot write score, factors, model version, or routing |
 | `AnalyticsService` | Natural-language question | Verified aggregate and scope metadata | Uses only allow-listed computations over matching records |
 | `ScoreStorage` | Score result | Versioned cached result | Input-hash validation, locking, and atomic replacement |
-| `JevService` | Inquiry or command plus dynamic choices | Typed semantic judgments | Demo, direct live, or protected Gateway mode; never executes a side effect |
-| `InquiryService` | Inquiry, decisions, status, confirmation | Dataset-bound records and history | SQLite transactions; confirmation tokens are single-use |
+| `JevService` | Inquiry or command plus dynamic choices | Typed intent, escalation, effect, confirmation-sensitivity, tool, and argument judgments | Demo, direct live, or protected Gateway mode; never executes a side effect |
+| `InquiryService` | Inquiry, decisions, status, confirmation | Dataset-bound records, current→target previews, and history | SQLite transactions; no-op transitions are skipped and confirmation tokens are single-use |
 | `LeadFlowService` | Linked record ID and inquiry text | Persisted decision trail | Semantic cache includes content, model, question version, and catalog-taxonomy hash |
-| `WorkflowPolicyService` | Jev judgments and immutable ML score | Action, base/final priority, provenance, reason, uncertainty | Deterministic; ML adjusts only qualification/nurture priority; support/opt-out and urgency safeguards; outreach disabled |
-| `CommandService` | Jev tool choice, UI selection, explicit IDs | Validated tool result or clarification | Six-tool registry only; Python validates and executes |
+| `WorkflowPolicyService` | Jev judgments and immutable ML score | Action, escalation, base/final priority, provenance, reason, uncertainty | Deterministic; explicit escalation and confidence gates; ML adjusts only qualification/nurture priority; support/opt-out and urgency safeguards; outreach disabled |
+| `CommandService` | Jev tool/effect judgments, UI selection, explicit IDs | Validated tool result, decision trace, transition preview, or clarification | Six-tool registry only; effect/tool mismatch fails closed; Python validates and executes |
 | Vercel Jev adapter | Protected evaluation request | Normalized Choice/Noul answers and usage | Server-only key, request caps, timeout, retries, no state logging |
+
+## Jev capability map
+
+| Capability | Semantic output | Deterministic boundary |
+| --- | --- | --- |
+| Intent classification | Main inquiry intent and complete Choice distribution | Application validation and safety overrides |
+| Workflow routing | Product, timeline, urgency, requirement, and missing-information evidence | Policy selects the action; ML can adjust only bounded sales priority |
+| Human escalation | Human-review probability and escalation-reason distribution | Policy threshold routes to `human_review`; support and opt-out remain overrides |
+| Confirmation detection | Requested effect and confirmation-sensitivity probability | Effect is cross-checked with tool metadata; Jev cannot waive confirmation |
+| Tool selection | Approved tool or `unknown`, arguments, and confidence | Python allow-list, scope, ID, and argument validation |
+| Workflow state | Requested target status and queue | Current state is loaded from SQLite; transitions are previewed, no-ops skipped, and writes explicitly confirmed |
+
+The inquiry capabilities share one eight-question evaluation, and the command
+capabilities share one evaluation over the command and dynamic choices. A new
+evaluation is used only when there is new semantic input; deterministic
+confirmation and execution do not call Jev again.
 
 ## Training architecture
 
@@ -198,17 +214,23 @@ Jev receives only the inquiry and the current product catalog. The catalog is a
 dataset-derived hierarchy of four product groups and eleven subgroups; subgroup
 names appear in the shared state and the product-choice criteria. Independent
 Choice and Noul judgments cover main intent, catalog product interest, purchase
-timeline, urgency, concrete purchase requirement, and missing qualification
-information. The workflow policy composes these judgments in Python with the
-immutable ML score.
+timeline, urgency, concrete purchase requirement, missing qualification
+information, human-review requirement, and escalation reason. The workflow
+policy composes these judgments in Python with the immutable ML score.
 
 Operational intent remains authoritative: opt-out and support override every
-ML route, uncertain main intent goes to human review, and urgency establishes a
-priority floor. The calibrated ML route can raise or lower priority only for
-qualification and nurture, without changing their action. The decision trail
-records semantic base priority, final priority, adjustment, and reason. This
-supports genuine composition while preventing propensity from overriding the
+ML route, an explicit Jev escalation probability or uncertain main intent goes
+to human review, and urgency establishes a priority floor. The calibrated ML
+route can raise or lower priority only for qualification and nurture, without
+changing their action. The decision trail records escalation provenance,
+semantic base priority, final priority, adjustment, and reason. This supports
+genuine composition while preventing propensity from overriding the
 customer's operational intent.
+
+The backend exposes the two review gates as configuration:
+`LEADFLOW_CONFIDENCE_THRESHOLD` (default `0.55`) applies to the main-intent
+distribution, and `LEADFLOW_HUMAN_REVIEW_THRESHOLD` (default `0.65`) applies
+to Jev's explicit human-review probability.
 
 `TYPESAFE_MODE=demo` uses deterministic rules and is explicitly marked in the
 response. `TYPESAFE_MODE=live` calls TypeSafe's HTTP System One endpoint.
@@ -235,14 +257,14 @@ sequenceDiagram
     API->>Data: Validate record, score, and load current dataset checksum
     API->>DB: Check cache by content/model/question/taxonomy version
     alt Semantic cache miss
-        API->>Jev: Shared state plus six focused questions
+        API->>Jev: Shared state plus eight focused questions
         Jev-->>API: Choice distributions and Noul probabilities
         API->>DB: Store semantic decision
     else Cache hit
         DB-->>API: Stored semantic decision
     end
     API->>Policy: Compose semantic judgment with immutable ML score
-    Policy-->>API: Action, base/final priority, provenance, uncertainty
+    Policy-->>API: Action, escalation, base/final priority, provenance, uncertainty
     API->>DB: Store inquiry, decisions, dataset binding, and initial status
     API-->>UI: Complete inspectable decision trail
 ```
@@ -254,17 +276,21 @@ remains visible; policy can route it to qualification or human review.
 
 ## CRM command architecture
 
-The command bar first obtains a constrained tool and categorical-argument
-judgment, then Python parses explicit record/inquiry IDs and validates all
-arguments against current dataset values. Product filters receive the same
+The command bar first obtains constrained tool, requested-effect,
+confirmation-sensitivity, and categorical-argument judgments. Python
+cross-checks the requested effect against tool metadata before parsing explicit
+record/inquiry IDs and validating all arguments against current dataset values.
+Product filters receive the same
 dataset-derived group/subgroup hierarchy used by inquiry understanding, then
 resolve to an exact supported parent group. Only the six registered tools can
 execute. Analytics commands call structured operations directly; they do not
 feed an interpreted command back through the keyword parser. Listing reports
 the matching population and returned page, aggregation reports its full
 matching population, and date filters are rejected because the source has no
-event timestamps. Status updates create a SQLite confirmation record before
-any write and are applied only by the explicit confirmation endpoint.
+event timestamps. Any tool/effect disagreement fails closed. Status updates
+show each current→target transition, exclude no-ops, and create a SQLite
+confirmation record before any write. They are applied only by the explicit
+confirmation endpoint.
 
 ### Command sequence
 
@@ -281,17 +307,17 @@ sequenceDiagram
     User->>UI: Natural-language command plus current selection
     UI->>API: POST /api/commands
     API->>Jev: Command plus dynamic categorical choices
-    Jev-->>Cmd: Tool choice, confidence, categorical arguments
-    Cmd->>Cmd: Parse explicit IDs; validate choices, scope, and limits
+    Jev-->>Cmd: Tool, effect, confirmation sensitivity, arguments
+    Cmd->>Cmd: Cross-check effect; parse IDs; validate scope and limits
     alt Read or scoring tool
         Cmd->>Tool: Execute allow-listed operation
         Tool-->>Cmd: Deterministic result
         Cmd-->>API: Result, interpreted arguments, and scope
         API-->>UI: Typed command response
     else Status update
-        Cmd->>DB: Create pending single-use confirmation
-        DB-->>Cmd: Confirmation ID
-        Cmd-->>API: Preview only
+        Cmd->>DB: Load current states; skip no-ops; create confirmation
+        DB-->>Cmd: Current→target transitions and single-use ID
+        Cmd-->>API: Decision trace and preview only
         API-->>UI: Typed preview response
         User->>UI: Confirm change
         UI->>API: POST /api/commands/confirm
@@ -300,10 +326,11 @@ sequenceDiagram
     end
 ```
 
-Jev is useful here for mapping varied wording to a constrained tool and known
-categorical values. It does not parse record IDs, query data, score records,
-calculate aggregates, or apply writes. Those operations remain deterministic
-Python functions with typed responses.
+Jev is useful here for mapping varied wording to a constrained tool, requested
+effect, confirmation sensitivity, and known categorical values. It does not
+parse record IDs, query data, score records, calculate aggregates, authorize a
+write, or apply a transition. Those operations remain deterministic Python
+functions with typed responses.
 
 ## User-facing surfaces
 
@@ -311,8 +338,8 @@ Python functions with typed responses.
 | --- | --- | --- | --- |
 | Model dashboard | Dataset profile, observed outcomes, held-out ROC-AUC, lift, feature contract, and model version | Dataset aggregates and persisted model card | None |
 | Opportunities | Search, pagination, multi-select, batch scoring, calibrated probability, policy route, TreeSHAP factor inspection, and direct LeadFlow navigation | Data service, calibrated XGBoost, TreeSHAP, and deterministic scoring policy | None |
-| LeadFlow inbox | Linked inquiry creation, hierarchical catalog understanding, six action queues, priority/status filters, full-text inspection, semantic uncertainty, ML/Jev disagreement, priority provenance, and status management | Jev semantic evaluation plus deterministic hybrid workflow policy and persisted history | One Jev evaluation per new uncached inquiry |
-| CRM command bar | Selection-aware use of six approved tools, interpreted arguments, result scope, clarification, and preview/confirmation for status writes | Jev tool/choice selection plus Python validation and execution | One Jev evaluation per command; confirmation itself is free |
+| LeadFlow inbox | Linked inquiry creation, hierarchical catalog understanding, explicit human-escalation evidence, six action queues, priority/status filters, semantic uncertainty, ML/Jev disagreement, priority provenance, and status management | Jev semantic evaluation plus deterministic hybrid workflow policy and persisted history | One Jev evaluation per new uncached inquiry |
+| CRM command bar | Selection-aware use of six approved tools, effect/confirmation decision trace, interpreted arguments, result scope, clarification, and current→target preview/confirmation for status writes | Jev tool/effect/argument selection plus Python validation and execution | One Jev evaluation per command; deterministic confirmation does not call Jev |
 | Verified analytics | Supported portfolio summaries, highest-value ranking, exact filters, and observed win-rate comparisons by business dimension | Deterministic full-population analytics | None |
 | Grounded explanation API | Narrative score explanation and missing-information summary | Optional LLM wording wrapped around immutable ML and policy evidence | One explanation call when explicitly enabled |
 
@@ -323,13 +350,15 @@ Python functions with typed responses.
 | Closed-won probability and 0–100 score | Calibrated XGBoost pipeline |
 | Positive and negative model factors | TreeSHAP |
 | Inquiry intent, hierarchy-grounded product group, timeline, urgency, requirement, missing information | Jev semantic evaluation |
-| Command tool and supported categorical arguments | Jev semantic evaluation |
+| Human-review probability and escalation reason | Jev semantic evaluation |
+| Command tool, requested effect, confirmation sensitivity, and supported categorical arguments | Jev semantic evaluation |
 | Record/inquiry ID parsing and validation | Python command service |
+| Tool/effect consistency and confirmation requirement | Python command policy; Jev can require caution but never waive it |
 | LeadFlow action and semantic base priority | Python workflow policy over Jev evidence |
 | Bounded qualification/nurture priority adjustment | Python workflow policy using the calibrated ML route |
 | Priority provenance, disagreement, and outreach prohibition | Python workflow policy |
 | Filters, scoring, explanations, rankings, and portfolio calculations | Approved Python tools |
-| Status mutation | SQLite service after explicit confirmation |
+| Current→target status preview, no-op handling, and status mutation | SQLite service after explicit confirmation |
 | Optional narrative wording | Disabled-by-default explanation LLM |
 
 ## Security and reliability controls
@@ -341,6 +370,10 @@ Python functions with typed responses.
 - Cache hits require both the active model version and the exact input hash.
 - Semantic cache hits require content, Jev model, question version, and catalog
   taxonomy hash to match.
+- Command execution fails closed when Jev's requested effect disagrees with the
+  selected tool or reports confirmation-sensitive behavior for a read-only tool.
+- Workflow mutations expose current→target transitions, skip no-ops, and always
+  require an application-issued single-use confirmation; Jev cannot waive it.
 - The outcome is available for evaluation displays but never enters inference.
 - LLM output is structurally validated and wrapped with application-owned
   decision fields.
@@ -364,7 +397,8 @@ Python functions with typed responses.
   probabilities. Confidence and uncertainty remain visible, and deterministic
   application policy owns the resulting workflow action.
 - Workflow state, history, confirmation tokens, and semantic cache entries are
-  stored transactionally in SQLite. Score results use a versioned, input-hashed
+  stored transactionally in SQLite. Current→target transitions are rechecked
+  when confirmation is applied. Score results use a versioned, input-hashed
   atomic JSON cache.
 - Actions remain inside the application; automated customer outreach is
   disabled for every route.

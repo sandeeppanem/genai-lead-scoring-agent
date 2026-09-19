@@ -120,6 +120,8 @@ class LeadFlowSemanticDecision(BaseModel):
     explicit_urgency: NoulJudgment
     concrete_purchase_requirement: NoulJudgment
     qualification_information_missing: NoulJudgment
+    human_review_required: Optional[NoulJudgment] = None
+    escalation_reason: Optional[ChoiceJudgment] = None
     provider_mode: Literal["demo", "live"]
     model: str
     question_version: str
@@ -137,6 +139,8 @@ class WorkflowDecision(BaseModel):
     policy_version: str
     uncertainty: List[str] = Field(default_factory=list)
     disagreement: Optional[str] = None
+    human_escalation_triggered: bool = False
+    human_escalation_reason: Optional[str] = None
     automated_outreach_allowed: bool = False
 
 
@@ -182,6 +186,15 @@ class CommandConfirmationRequest(BaseModel):
     confirmation_id: str = Field(..., min_length=8, max_length=100)
 
 
+class CommandDecisionTrace(BaseModel):
+    requested_effect: Optional[ChoiceJudgment] = None
+    confirmation_sensitivity: Optional[NoulJudgment] = None
+    confirmation_required: bool = False
+    confirmation_reason: str
+    question_version: Optional[str] = None
+    source: Literal["jev_with_application_policy", "application_policy"]
+
+
 class CommandResponse(BaseModel):
     tool: Optional[str] = None
     confidence: float = Field(..., ge=0.0, le=1.0)
@@ -191,5 +204,6 @@ class CommandResponse(BaseModel):
     result: Any = None
     requires_confirmation: bool = False
     confirmation_id: Optional[str] = None
+    decision_trace: Optional[CommandDecisionTrace] = None
     provider_mode: Literal["demo", "live"]
     model: str

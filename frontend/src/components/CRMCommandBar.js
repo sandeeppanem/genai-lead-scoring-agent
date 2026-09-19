@@ -49,6 +49,28 @@ const ResultPreview = ({ result }) => {
         {result.explanation && <Typography variant="body2">{result.explanation}</Typography>}
         {result.side_effects && <Typography variant="body2">{result.side_effects}</Typography>}
         {result.status && <Typography variant="body2">New status: {humanize(result.status)}</Typography>}
+        {Array.isArray(result.transitions) && result.transitions.length > 0 && (
+          <Stack spacing={0.75} mt={1.25}>
+            {result.transitions.map((transition) => (
+              <Box
+                key={transition.inquiry_id}
+                display="flex"
+                alignItems="center"
+                justifyContent="space-between"
+                gap={1}
+              >
+                <Typography variant="body2">
+                  Inquiry {transition.inquiry_id}: {humanize(transition.current_status)} → {humanize(transition.target_status)}
+                </Typography>
+                <Chip
+                  size="small"
+                  color={transition.will_change ? 'warning' : 'default'}
+                  label={transition.will_change ? 'Will change' : 'Already set'}
+                />
+              </Box>
+            ))}
+          </Stack>
+        )}
       </Box>
     );
   }
@@ -222,6 +244,47 @@ const CRMCommandBar = ({ selectedRecordIds, selectedInquiryIds, onMutation }) =>
                 />
               )}
             </Stack>
+            {response.decision_trace && (
+              <Box sx={{ bgcolor: 'grey.50', borderRadius: 2, p: 1.5, mb: 1.5 }}>
+                <Typography variant="subtitle2" gutterBottom>Decision trace</Typography>
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  {response.decision_trace.requested_effect && (
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={`Effect: ${humanize(response.decision_trace.requested_effect.value)}`}
+                    />
+                  )}
+                  {response.decision_trace.requested_effect && (
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={`Effect confidence: ${Math.round(response.decision_trace.requested_effect.confidence * 100)}%`}
+                    />
+                  )}
+                  {response.decision_trace.confirmation_sensitivity && (
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={`Confirmation sensitivity: ${Math.round(response.decision_trace.confirmation_sensitivity.probability * 100)}%`}
+                    />
+                  )}
+                  <Chip
+                    size="small"
+                    color={response.decision_trace.confirmation_required ? 'warning' : 'default'}
+                    label={response.decision_trace.confirmation_required ? 'Confirmation required' : 'No confirmation pending'}
+                  />
+                </Stack>
+                <Typography variant="body2" color="text.secondary" mt={1}>
+                  {response.decision_trace.confirmation_reason}
+                </Typography>
+                {response.decision_trace.question_version && (
+                  <Typography variant="caption" color="text.secondary">
+                    {response.decision_trace.question_version} · {humanize(response.decision_trace.source)}
+                  </Typography>
+                )}
+              </Box>
+            )}
             <ResultPreview result={response.result} />
           </Collapse>
           {response.requires_confirmation && (

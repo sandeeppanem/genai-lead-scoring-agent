@@ -7,13 +7,16 @@ from typing import Any, Dict, List
 class WorkflowPolicyService:
     """Application-owned policy composed from semantic and calibrated ML outputs."""
 
-    POLICY_VERSION = "leadflow-policy-v2"
+    POLICY_VERSION = "leadflow-policy-v3"
     ML_PRIORITY_ACTIONS = {"qualification", "nurture"}
     PRIORITY_RANK = {"low": 0, "medium": 1, "high": 2, "urgent": 3}
 
     def __init__(self) -> None:
         self.confidence_threshold = float(
             os.getenv("LEADFLOW_CONFIDENCE_THRESHOLD", "0.55")
+        )
+        self.human_review_threshold = float(
+            os.getenv("LEADFLOW_HUMAN_REVIEW_THRESHOLD", "0.65")
         )
 
     def decide(
@@ -28,7 +31,14 @@ class WorkflowPolicyService:
         urgent = semantic["explicit_urgency"]["probability"] >= 0.7
         concrete = semantic["concrete_purchase_requirement"]["probability"] >= 0.6
         missing = semantic["qualification_information_missing"]["probability"] >= 0.6
+        human_review_probability = float(
+            (semantic.get("human_review_required") or {}).get("probability", 0.0)
+        )
+        escalation_reason = str(
+            (semantic.get("escalation_reason") or {}).get("value", "none")
+        )
         uncertainty = self._uncertainty(semantic)
+        human_escalation_reason = None
 
         if intent == "opt_out" and intent_probability >= 0.4:
             action, base_priority = "do_not_contact", "urgent"
@@ -36,8 +46,20 @@ class WorkflowPolicyService:
         elif intent == "support" and intent_probability >= 0.4:
             action, base_priority = "support", "urgent" if urgent else "high"
             reason = "A service or defect issue belongs with support, independently of sales propensity."
+        elif human_review_probability >= self.human_review_threshold:
+            action, base_priority = "human_review", "medium"
+            human_escalation_reason = (
+                escalation_reason
+                if escalation_reason != "none"
+                else "semantic_escalation"
+            )
+            reason = (
+                "Jev indicates that human review is required: "
+                f"{human_escalation_reason.replace('_', ' ')}."
+            )
         elif intent_confidence < self.confidence_threshold:
             action, base_priority = "human_review", "medium"
+            human_escalation_reason = "low_intent_confidence"
             reason = "The semantic intent is below the configured confidence threshold."
         elif intent == "quote_request":
             if concrete and not missing:
@@ -55,6 +77,7 @@ class WorkflowPolicyService:
             reason = "The inquiry is exploratory rather than a concrete current purchase request."
         else:
             action, base_priority = "human_review", "low"
+            human_escalation_reason = "unsupported_intent"
             reason = "The inquiry does not map confidently to an approved automated queue."
 
         ml_route = ml_score["routing"]["next_action"]
@@ -80,6 +103,8 @@ class WorkflowPolicyService:
             "policy_version": self.POLICY_VERSION,
             "uncertainty": uncertainty,
             "disagreement": disagreement,
+            "human_escalation_triggered": action == "human_review",
+            "human_escalation_reason": human_escalation_reason,
             "automated_outreach_allowed": False,
         }
 
@@ -127,7 +152,9 @@ class WorkflowPolicyService:
         return (
             priority,
             adjustment,
-            f"The calibrated ML route {ml_route.replace('_', ' ')} {adjustment} priority from {base_priority} to {priority} without changing the {action} action.",
+            f"The calibrated ML {ml_route.replace('_', '-')} route {adjustment} "
+            f"priority from {base_priority} to {priority} without changing the "
+            f"{action} action.",
         )
 
     def _uncertainty(self, semantic: Dict[str, Any]) -> List[str]:
@@ -147,4 +174,7 @@ class WorkflowPolicyService:
             probability = semantic[key]["probability"]
             if 0.35 <= probability <= 0.65:
                 output.append(f"Uncertain {label}")
+        human_review = semantic.get("human_review_required")
+        if human_review and 0.35 <= human_review["probability"] <= 0.65:
+            output.append("Uncertain human-review requirement")
         return output
