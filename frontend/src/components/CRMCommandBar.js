@@ -28,6 +28,7 @@ const examples = [
   'Show urgent quote requests.',
   'Score the selected opportunities.',
   'Compare observed win rates by sales channel.',
+  'Mark the selected inquiry as reviewed.',
 ];
 
 const humanize = (value) => String(value || '').replaceAll('_', ' ');
@@ -54,7 +55,7 @@ const ResultPreview = ({ result }) => {
   if (!result.length) return <Typography color="text.secondary">No matching records.</Typography>;
   return (
     <Grid container spacing={1}>
-      {result.slice(0, 8).map((item, index) => (
+      {result.map((item, index) => (
         <Grid item xs={12} sm={6} md={3} key={item.id || item.record_id || item.value || index}>
           <Box sx={{ bgcolor: 'grey.50', border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.25, height: '100%' }}>
             <Typography variant="subtitle2">
@@ -222,20 +223,20 @@ const CRMCommandBar = ({ selectedRecordIds, selectedInquiryIds, onMutation }) =>
               )}
             </Stack>
             <ResultPreview result={response.result} />
-            {response.requires_confirmation && (
-              <Alert
-                severity="warning"
-                sx={{ mt: 1.5 }}
-                action={(
-                  <Button color="warning" size="small" startIcon={<CheckIcon />} onClick={apply} disabled={loading}>
-                    Confirm change
-                  </Button>
-                )}
-              >
-                This command changes workflow data. Review the preview before confirming.
-              </Alert>
-            )}
           </Collapse>
+          {response.requires_confirmation && (
+            <Alert
+              severity="warning"
+              sx={{ mt: 1.5 }}
+              action={(
+                <Button color="warning" size="small" startIcon={<CheckIcon />} onClick={apply} disabled={loading}>
+                  Confirm change
+                </Button>
+              )}
+            >
+              This command changes workflow data. Review the preview before confirming.
+            </Alert>
+          )}
         </Box>
       )}
     </Paper>
