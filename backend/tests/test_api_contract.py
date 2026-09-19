@@ -153,7 +153,19 @@ class APIContractTest(unittest.TestCase):
         self.assertEqual(created.status_code, 201, created.text)
         item = created.json()
         self.assertEqual(item["workflow_decision"]["action"], "quote_request")
+        self.assertEqual(item["workflow_decision"]["policy_version"], "leadflow-policy-v2")
+        self.assertEqual(item["workflow_decision"]["base_priority"], "urgent")
+        self.assertEqual(
+            item["workflow_decision"]["ml_priority_adjustment"], "not_applicable"
+        )
         self.assertEqual(item["semantic_decision"]["provider_mode"], "demo")
+        self.assertEqual(
+            item["semantic_decision"]["question_version"], "leadflow-inquiry-v2"
+        )
+        self.assertEqual(
+            item["semantic_decision"]["product_interest"]["value"],
+            "Car Accessories",
+        )
         self.assertNotEqual(
             item["semantic_decision"]["main_intent"]["probabilities"],
             item["ml_score"]["probability"],

@@ -21,11 +21,24 @@ const main = async () => {
     return;
   }
   const { experimental_evaluate: evaluate } = await import('ai');
+  const catalogProductTaxonomy = {
+    'Car Accessories': [
+      'Batteries & Accessories',
+      'Exterior Accessories',
+      'Garage & Car Care',
+      'Interior Accessories',
+      'Replacement Parts',
+      'Towing & Hitches',
+    ],
+    'Car Electronics': ['Car Electronics'],
+    'Performance & Non-auto': ['Motorcycle Parts', 'Performance Parts', 'Shelters & RV'],
+    'Tires & Wheels': ['Tires & Wheels'],
+  };
   const result = await evaluate({
     model: 'typesafe-ai/jev',
     state: {
       inquiry: 'Please quote 200 replacement batteries; we need delivery next month.',
-      catalog: ['Car Accessories', 'Car Electronics', 'Performance & Non-auto', 'Tires & Wheels'],
+      catalog_product_taxonomy: catalogProductTaxonomy,
     },
     questions: {
       intent: {
@@ -38,6 +51,17 @@ const main = async () => {
           other: 'Anything else.',
         },
       },
+      product_interest: {
+        type: 'choice',
+        instructions: 'Which top-level catalog product group best matches the product in the inquiry? Use the subgroup hierarchy as the authoritative catalog semantics.',
+        criteria: {
+          car_accessories: 'Car Accessories. Includes Batteries & Accessories, Exterior Accessories, Garage & Car Care, Interior Accessories, Replacement Parts, and Towing & Hitches.',
+          car_electronics: 'Car Electronics. Includes the Car Electronics subgroup.',
+          performance_non_auto: 'Performance & Non-auto. Includes Motorcycle Parts, Performance Parts, and Shelters & RV.',
+          tires_wheels: 'Tires & Wheels. Includes the Tires & Wheels subgroup.',
+          unknown: 'The inquiry does not identify a product represented by the catalog.',
+        },
+      },
       urgent: {
         type: 'boolean',
         instructions: 'Does the inquiry explicitly express urgency or time sensitivity?',
@@ -47,12 +71,15 @@ const main = async () => {
     abortSignal: AbortSignal.timeout(15000),
   });
   const intent = result.answers.intent;
+  const productInterest = result.answers.product_interest;
   const urgent = result.answers.urgent;
   console.log(JSON.stringify({
     ok: true,
     model: result.response.modelId,
     intent: intent.choice,
     intent_probabilities: intent.probabilities,
+    product_interest: productInterest.choice,
+    product_probabilities: productInterest.probabilities,
     urgency_probability: urgent.probability,
     usage: result.usage,
   }, null, 2));

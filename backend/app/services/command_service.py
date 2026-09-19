@@ -62,7 +62,11 @@ class CommandService:
                 "competitor_type",
             )
         }
-        decision = self.jev_service.classify_command(command, dimensions)
+        decision = self.jev_service.classify_command(
+            command,
+            dimensions,
+            self.data_service.product_taxonomy(),
+        )
         base = {
             "tool": decision["tool"] if decision["tool"] != "unknown" else None,
             "confidence": decision["confidence"],

@@ -20,7 +20,7 @@ a prioritized workflow, and portfolio-level analytics.
 | Model dashboard | Review the source population, observed business outcomes, held-out ROC-AUC, lift, feature contract, and active model version | Metrics come from the persisted model card and dataset aggregates |
 | Opportunity workbench | Search and page through 77,970 opportunities, select up to 20 records, run batch scoring, and open a selected record in LeadFlow | Calibrated XGBoost owns the 0–100 score; deterministic policy owns priority and next action |
 | Model inspection | View predicted win probability, positive and negative TreeSHAP factors, routing explanation, and cache/model versions | Factors are derived from the model margin and aggregated back to source business fields |
-| LeadFlow inbox | Attach an inquiry to an opportunity, classify it, filter six action queues, inspect uncertainty and disagreements, and manage workflow status | Jev supplies semantic judgments; Python policy owns the action, priority, reason, and outreach prohibition |
+| LeadFlow inbox | Attach an inquiry to an opportunity, classify it against the dataset-derived catalog hierarchy, filter six action queues, inspect uncertainty and priority provenance, and manage workflow status | Jev supplies semantic judgments; Python policy owns the action, safely composes ML propensity into selected priorities, and prohibits automated outreach |
 | CRM command bar | Use natural language to retrieve, inspect, score, summarize, and update supported records with current UI selection as context | Jev selects from six approved tools; Python validates arguments, executes tools, and requires confirmation before command-driven writes |
 | Verified analytics | Ask for supported win-rate comparisons, exact-filter summaries, and highest-value opportunities | Deterministic calculations run over the complete matching population and report their scope |
 | Grounded explanations | Request an optional narrative of an opportunity score and missing information | The language model can write narrative text only; the application preserves the score, factors, model version, and routing |
@@ -102,13 +102,16 @@ runtime flow and component contracts.
 Jev is used for two bounded semantic decisions:
 
 1. **Inquiry understanding.** One evaluation asks independent questions over a
-   shared inquiry state: main intent, catalog product interest, purchase
-   timeline, explicit urgency, concrete purchase requirement, and missing
-   qualification information. Choice answers retain their probability
-   distributions; boolean/Noul answers retain their probability.
+   shared inquiry state: main intent, catalog product interest grounded by the
+   current group/subgroup hierarchy, purchase timeline, explicit urgency,
+   concrete purchase requirement, and missing qualification information.
+   Choice answers retain their probability distributions; boolean/Noul answers
+   retain their probability.
 2. **CRM command interpretation.** One evaluation selects one of six approved
    tools and supported categorical arguments such as region, product group,
-   action queue, workflow status, or summary dimension.
+   action queue, workflow status, or summary dimension. Product-filter choices
+   reuse the same group/subgroup hierarchy, while Python resolves the result to
+   an exact supported parent filter.
 
 Jev does **not** calculate or modify the ML win probability, TreeSHAP factors,
 workflow action, analytics result, opportunity data, or workflow status. Python
@@ -138,10 +141,12 @@ separate from deterministic business logic and side effects.
 1. Enter non-sensitive inquiry text and choose **Classify & route**.
 2. Jev returns semantic judgments; the existing ML service independently
    supplies the linked opportunity score.
-3. Python workflow policy composes both inputs into quote request,
-   qualification, nurture, support, do-not-contact, or human-review action.
-4. Inspect the original text, separate ML/Jev/policy cards, reason, uncertainty,
-   disagreement, provider/model, and question/policy versions.
+3. Python workflow policy maps Jev evidence to quote request, qualification,
+   nurture, support, do-not-contact, or human-review action. ML propensity may
+   adjust only qualification or nurture priority within defined safety bounds.
+4. Inspect the original text, separate ML/Jev/policy cards, action and priority
+   reasons, semantic base and final priority, uncertainty, disagreement,
+   provider/model, and question/policy versions.
 5. Filter queues and statuses or update a status directly in the inbox. Direct
    inbox status changes apply immediately; command-bar status changes use the
    preview-and-confirm flow.
@@ -221,6 +226,19 @@ single reporting period and does not contain event timestamps, account IDs, or
 unstructured communications. Evaluation therefore uses group-disjoint splits
 by opportunity number.
 
+LeadFlow derives its Jev catalog choices from the same dataset:
+
+| Product group | Catalog subgroups supplied as semantics |
+| --- | --- |
+| Car Accessories | Batteries & Accessories; Exterior Accessories; Garage & Car Care; Interior Accessories; Replacement Parts; Towing & Hitches |
+| Car Electronics | Car Electronics |
+| Performance & Non-auto | Motorcycle Parts; Performance Parts; Shelters & RV |
+| Tires & Wheels | Tires & Wheels |
+
+The hierarchy is included in the shared Jev state and in product-choice
+criteria. Its hash participates in the semantic cache key, so a catalog change
+cannot silently reuse a judgment made against older product semantics.
+
 LeadFlow semantic and policy behavior is exercised against 36 labeled synthetic
 inquiries spanning quote requests, product-fit questions, research, support,
 opt-out, and ambiguous messages. These fixtures are independent of historical
@@ -261,6 +279,23 @@ The calibration population determines two routing thresholds:
 - Medium priority: above the calibration-set median, routed to nurture
 - Low priority: below the calibration-set median
 
+LeadFlow workflow policy keeps operational intent in control. Opt-out and
+support override every ML route, low-confidence main intent goes to human
+review, and explicit urgency cannot be downgraded. Jev evidence determines the
+action family through deterministic policy. The calibrated ML route can adjust
+priority only for qualification and nurture:
+
+| Action | Calibrated ML route | Bounded priority effect |
+| --- | --- | --- |
+| Qualification | Sales review | Medium may rise to high |
+| Qualification | Nurture or low priority | Never falls below medium |
+| Nurture | Sales review | Low may rise to medium |
+| Nurture | Low priority | Medium may fall to low |
+| Quote, support, do not contact, or human review | Any | No ML priority adjustment |
+
+Every workflow response records the semantic base priority, final priority,
+adjustment, and priority reason under `leadflow-policy-v2`.
+
 Automated outreach is disabled for every route. The optional LLM endpoint uses
 a typed response envelope: score, probability, TreeSHAP factors, model version,
 and routing are copied from verified application services. Only the explanation
@@ -290,7 +325,8 @@ LeadFlow accepts an inquiry linked to an existing opportunity record. The
 inquiry is stored with the active dataset checksum so a future dataset change
 cannot silently reassign it. Jev-style semantic judgments are kept separate
 from the calibrated ML win probability; deterministic workflow policy owns the
-resulting action and priority. No inquiry text, outcome label, or completed
+resulting action and priority. Jev product judgment uses the 4-group, 11-subgroup
+catalog derived from the dataset. No inquiry text, outcome label, or completed
 sales-cycle field is sent to the ML model, and automated outreach is disabled.
 
 The default provider is `TYPESAFE_MODE=demo`. It is deterministic, offline,
@@ -487,10 +523,11 @@ npm --prefix frontend run test:adapter
 
 The test suite covers dataset normalization, leakage exclusions, calibrated
 scoring, source-level TreeSHAP factors, cache invalidation, policy safety,
-analytics scope, LeadFlow labels and routing, command arguments and scope,
-preview-before-apply status changes, Gateway adapter normalization, health,
-and the end-to-end HTTP contract. The live smoke test is intentionally
-separate because it consumes one Gateway request and needs a user-owned key.
+analytics scope, dataset-derived product taxonomy, bounded hybrid priority
+composition, LeadFlow labels and routing, command arguments and scope,
+preview-before-apply status changes, Gateway adapter normalization, health, and
+the end-to-end HTTP contract. The live smoke test is intentionally separate
+because it consumes one Gateway request and needs a user-owned key.
 
 ## Repository structure
 

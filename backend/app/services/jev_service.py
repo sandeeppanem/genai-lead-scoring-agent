@@ -16,8 +16,8 @@ class JevService:
     """Focused TypeSafe/Jev judgments with an explicitly labelled demo mode."""
 
     API_URL = "https://api.typesafe.ai/v1/systemone"
-    QUESTION_VERSION = "leadflow-inquiry-v1"
-    COMMAND_QUESTION_VERSION = "leadflow-command-v1"
+    QUESTION_VERSION = "leadflow-inquiry-v2"
+    COMMAND_QUESTION_VERSION = "leadflow-command-v2"
 
     INTENTS = {
         "quote_request": "Requests pricing, a quote, an order, or a concrete purchase.",
@@ -77,24 +77,33 @@ class JevService:
         return "demo" if self.mode == "demo" else "live"
 
     def classify_inquiry(
-        self, inquiry_text: str, product_groups: List[str]
+        self, inquiry_text: str, product_taxonomy: Mapping[str, List[str]]
     ) -> Dict[str, Any]:
         if self.mode == "demo":
-            return self._demo_inquiry(inquiry_text, product_groups)
+            return self._demo_inquiry(inquiry_text, product_taxonomy)
         if not self.is_ready:
             raise JevUnavailableError(
                 "The configured Jev provider is missing its server-side credentials."
             )
 
-        product_keys = {self._option_key(value): value for value in product_groups}
+        product_keys = {
+            self._option_key(group): group for group in product_taxonomy
+        }
+        product_criteria = {
+            self._option_key(group): self._product_group_description(group, subgroups)
+            for group, subgroups in product_taxonomy.items()
+        }
         product_keys["unknown"] = "Unknown or not stated"
+        product_criteria["unknown"] = (
+            "The inquiry does not identify a product represented by the catalog."
+        )
         questions = {
             "main_intent": self._choice_question(
                 "What is the customer's single main intent?", self.INTENTS
             ),
             "product_interest": self._choice_question(
-                "Which catalog product group is the customer asking about?",
-                {key: value for key, value in product_keys.items()},
+                "Which top-level catalog product group best matches the product in the inquiry? Use the supplied subgroup hierarchy as the authoritative catalog semantics.",
+                product_criteria,
             ),
             "purchase_timeline": self._choice_question(
                 "What purchase timeline is explicitly supported by the inquiry?",
@@ -113,7 +122,7 @@ class JevService:
         payload = self._evaluate(
             state={
                 "inquiry": inquiry_text,
-                "catalog_product_groups": product_groups,
+                "catalog_product_taxonomy": dict(product_taxonomy),
                 "instruction": "Judge only the inquiry. Do not infer sales outcomes or conversion likelihood.",
             },
             questions=questions,
@@ -145,9 +154,10 @@ class JevService:
         self,
         command: str,
         dimensions: Mapping[str, List[str]],
+        product_taxonomy: Optional[Mapping[str, List[str]]] = None,
     ) -> Dict[str, Any]:
         if self.mode == "demo":
-            return self._demo_command(command, dimensions)
+            return self._demo_command(command, dimensions, product_taxonomy)
         if not self.is_ready:
             raise JevUnavailableError(
                 "The configured Jev provider is missing its server-side credentials."
@@ -196,14 +206,24 @@ class JevService:
             option_map = {self._option_key(value): value for value in values}
             option_map["not_specified"] = "Not specified"
             option_maps[dimension] = option_map
+            criteria: Dict[str, Any] = dict(option_map)
+            if dimension == "supplies_group" and product_taxonomy:
+                criteria = {
+                    self._option_key(group): self._product_group_description(
+                        group, subgroups
+                    )
+                    for group, subgroups in product_taxonomy.items()
+                }
+                criteria["not_specified"] = "No catalog product is requested."
             questions[dimension] = self._choice_question(
                 f"Which supported {dimension.replace('_', ' ')} value is requested?",
-                option_map,
+                criteria,
             )
 
         payload = self._evaluate(
             state={
                 "command": command,
+                "catalog_product_taxonomy": dict(product_taxonomy or {}),
                 "instruction": "Choose only supported tools and categorical values. Use unknown or not_specified when unclear.",
             },
             questions=questions,
@@ -279,7 +299,7 @@ class JevService:
         ) from last_error
 
     def _demo_inquiry(
-        self, inquiry_text: str, product_groups: List[str]
+        self, inquiry_text: str, product_taxonomy: Mapping[str, List[str]]
     ) -> Dict[str, Any]:
         text = inquiry_text.casefold()
         intent = "other"
@@ -302,10 +322,20 @@ class JevService:
         product_tokens = {
             "Tires & Wheels": ("tire", "tyre", "wheel"),
             "Car Electronics": ("car electronic", "electronics", "stereo", "gps", "camera"),
-            "Performance & Non-auto": ("performance", "motorcycle", "rv", "towing", "hitch"),
-            "Car Accessories": ("battery", "batteries", "accessor", "replacement part", "car care", "interior", "exterior"),
+            "Performance & Non-auto": ("performance", "motorcycle", "rv", "shelter"),
+            "Car Accessories": (
+                "battery",
+                "batteries",
+                "accessor",
+                "replacement part",
+                "car care",
+                "interior",
+                "exterior",
+                "towing",
+                "hitch",
+            ),
         }
-        for candidate in product_groups:
+        for candidate in product_taxonomy:
             tokens = product_tokens.get(candidate, (candidate.casefold(),))
             if any(token in text for token in tokens):
                 product = candidate
@@ -339,7 +369,7 @@ class JevService:
         )
         missing = 0.9 if intent in {"quote_request", "product_fit"} and missing_count else 0.18
 
-        product_options = list(product_groups) + ["Unknown"]
+        product_options = list(product_taxonomy) + ["Unknown"]
         return {
             "main_intent": self._demo_choice(intent, list(self.INTENTS), intent_strength),
             "product_interest": self._demo_choice(product, product_options, product_strength),
@@ -355,7 +385,10 @@ class JevService:
         }
 
     def _demo_command(
-        self, command: str, dimensions: Mapping[str, List[str]]
+        self,
+        command: str,
+        dimensions: Mapping[str, List[str]],
+        product_taxonomy: Optional[Mapping[str, List[str]]] = None,
     ) -> Dict[str, Any]:
         text = command.casefold()
         if any(word in text for word in ("mark ", "set ", "reviewed", "resolved", "in review")):
@@ -381,6 +414,15 @@ class JevService:
         for dimension, values in dimensions.items():
             arguments[dimension] = next(
                 (value for value in values if value.casefold() in text), None
+            )
+        if arguments.get("supplies_group") is None and product_taxonomy:
+            arguments["supplies_group"] = next(
+                (
+                    group
+                    for group, subgroups in product_taxonomy.items()
+                    if any(subgroup.casefold() in text for subgroup in subgroups)
+                ),
+                None,
             )
         dimension_aliases = {
             "route_to_market": ("sales channel", "channel", "route to market", "route"),
@@ -431,6 +473,12 @@ class JevService:
     @staticmethod
     def _choice_question(instructions: str, criteria: Mapping[str, Any]) -> Dict[str, Any]:
         return {"type": "choice", "instructions": instructions, "criteria": dict(criteria)}
+
+    @staticmethod
+    def _product_group_description(group: str, subgroups: List[str]) -> str:
+        if not subgroups:
+            return group
+        return f"{group}. Includes catalog subgroups: {', '.join(subgroups)}."
 
     @staticmethod
     def _noul_question(instructions: str) -> Dict[str, Any]:

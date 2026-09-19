@@ -83,10 +83,15 @@ class LeadFlowService:
 
     def _classify(self, inquiry_text: str) -> Dict[str, Any]:
         content_hash = hashlib.sha256(inquiry_text.encode("utf-8")).hexdigest()
+        product_taxonomy = self.data_service.product_taxonomy()
+        taxonomy_hash = hashlib.sha256(
+            json.dumps(product_taxonomy, sort_keys=True).encode("utf-8")
+        ).hexdigest()
         cache_payload = {
             "content_hash": content_hash,
             "model": self.jev_service.model_identity,
             "question_version": self.jev_service.QUESTION_VERSION,
+            "taxonomy_hash": taxonomy_hash,
         }
         cache_key = hashlib.sha256(
             json.dumps(cache_payload, sort_keys=True).encode("utf-8")
@@ -97,7 +102,7 @@ class LeadFlowService:
             return cached
         semantic = self.jev_service.classify_inquiry(
             inquiry_text,
-            self.data_service.dimension_values("supplies_group"),
+            product_taxonomy,
         )
         self.inquiry_service.store_cached_semantic(
             cache_key,

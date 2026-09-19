@@ -98,6 +98,7 @@ WorkflowAction = Literal[
 ]
 WorkflowPriority = Literal["urgent", "high", "medium", "low"]
 WorkflowStatus = Literal["new", "in_review", "reviewed", "resolved"]
+PriorityAdjustment = Literal["raised", "lowered", "unchanged", "not_applicable"]
 
 
 class ChoiceJudgment(BaseModel):
@@ -129,6 +130,9 @@ class LeadFlowSemanticDecision(BaseModel):
 class WorkflowDecision(BaseModel):
     action: WorkflowAction
     priority: WorkflowPriority
+    base_priority: Optional[WorkflowPriority] = None
+    ml_priority_adjustment: PriorityAdjustment = "not_applicable"
+    priority_reason: Optional[str] = None
     reason: str
     policy_version: str
     uncertainty: List[str] = Field(default_factory=list)

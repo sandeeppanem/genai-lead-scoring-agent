@@ -141,7 +141,7 @@ sequenceDiagram
 
 | Component | Inputs | Outputs | Enforced behavior |
 | --- | --- | --- | --- |
-| `DataService` | Source CSV, pagination, search, filters | Typed opportunity records and aggregates | Read-only access and exact-match supported filters |
+| `DataService` | Source CSV, pagination, search, filters | Typed opportunity records, aggregates, and product hierarchy | Read-only access and exact-match supported filters; taxonomy is derived from current group/subgroup values |
 | Feature contract | Qualification-time record fields | Ordered model feature frame | Same schema in training and inference |
 | XGBoost | Transformed feature matrix | Raw margin and propensity ranking | Outcome and completed-cycle fields are absent |
 | Platt calibrator | Raw XGBoost margin | Calibrated probability | Fitted only on the calibration partition |
@@ -152,8 +152,8 @@ sequenceDiagram
 | `ScoreStorage` | Score result | Versioned cached result | Input-hash validation, locking, and atomic replacement |
 | `JevService` | Inquiry or command plus dynamic choices | Typed semantic judgments | Demo, direct live, or protected Gateway mode; never executes a side effect |
 | `InquiryService` | Inquiry, decisions, status, confirmation | Dataset-bound records and history | SQLite transactions; confirmation tokens are single-use |
-| `LeadFlowService` | Linked record ID and inquiry text | Persisted decision trail | Semantic cache includes content, model, and question version |
-| `WorkflowPolicyService` | Jev judgments and immutable ML score | Action, priority, reason, uncertainty | Deterministic; support/opt-out safety overrides; outreach disabled |
+| `LeadFlowService` | Linked record ID and inquiry text | Persisted decision trail | Semantic cache includes content, model, question version, and catalog-taxonomy hash |
+| `WorkflowPolicyService` | Jev judgments and immutable ML score | Action, base/final priority, provenance, reason, uncertainty | Deterministic; ML adjusts only qualification/nurture priority; support/opt-out and urgency safeguards; outreach disabled |
 | `CommandService` | Jev tool choice, UI selection, explicit IDs | Validated tool result or clarification | Six-tool registry only; Python validates and executes |
 | Vercel Jev adapter | Protected evaluation request | Normalized Choice/Noul answers and usage | Server-only key, request caps, timeout, retries, no state logging |
 
@@ -194,14 +194,21 @@ number, dataset version, and source checksum. The checksum is checked again on
 read, preventing a future reorder or replacement of the CSV from silently
 moving an inquiry to a different record.
 
-Jev receives only the inquiry and the current product catalog. Independent
-Choice and Noul judgments cover main intent, catalog product interest,
-purchase timeline, urgency, concrete purchase requirement, and missing
-qualification information. The workflow policy composes these judgments in
-Python with the immutable ML score. It can therefore route an opt-out or
-support issue correctly even when the opportunity's conversion score is high,
-and it can show a high-score/early-research disagreement without confusing the
-two probabilities.
+Jev receives only the inquiry and the current product catalog. The catalog is a
+dataset-derived hierarchy of four product groups and eleven subgroups; subgroup
+names appear in the shared state and the product-choice criteria. Independent
+Choice and Noul judgments cover main intent, catalog product interest, purchase
+timeline, urgency, concrete purchase requirement, and missing qualification
+information. The workflow policy composes these judgments in Python with the
+immutable ML score.
+
+Operational intent remains authoritative: opt-out and support override every
+ML route, uncertain main intent goes to human review, and urgency establishes a
+priority floor. The calibrated ML route can raise or lower priority only for
+qualification and nurture, without changing their action. The decision trail
+records semantic base priority, final priority, adjustment, and reason. This
+supports genuine composition while preventing propensity from overriding the
+customer's operational intent.
 
 `TYPESAFE_MODE=demo` uses deterministic rules and is explicitly marked in the
 response. `TYPESAFE_MODE=live` calls TypeSafe's HTTP System One endpoint.
@@ -226,7 +233,7 @@ sequenceDiagram
     User->>UI: Select one opportunity and create inquiry
     UI->>API: POST /api/inquiries
     API->>Data: Validate record, score, and load current dataset checksum
-    API->>DB: Check semantic cache by content/model/question version
+    API->>DB: Check cache by content/model/question/taxonomy version
     alt Semantic cache miss
         API->>Jev: Shared state plus six focused questions
         Jev-->>API: Choice distributions and Noul probabilities
@@ -235,7 +242,7 @@ sequenceDiagram
         DB-->>API: Stored semantic decision
     end
     API->>Policy: Compose semantic judgment with immutable ML score
-    Policy-->>API: Action, priority, reason, uncertainty, disagreement
+    Policy-->>API: Action, base/final priority, provenance, uncertainty
     API->>DB: Store inquiry, decisions, dataset binding, and initial status
     API-->>UI: Complete inspectable decision trail
 ```
@@ -249,7 +256,9 @@ remains visible; policy can route it to qualification or human review.
 
 The command bar first obtains a constrained tool and categorical-argument
 judgment, then Python parses explicit record/inquiry IDs and validates all
-arguments against current dataset values. Only the six registered tools can
+arguments against current dataset values. Product filters receive the same
+dataset-derived group/subgroup hierarchy used by inquiry understanding, then
+resolve to an exact supported parent group. Only the six registered tools can
 execute. Analytics commands call structured operations directly; they do not
 feed an interpreted command back through the keyword parser. Listing reports
 the matching population and returned page, aggregation reports its full
@@ -302,7 +311,7 @@ Python functions with typed responses.
 | --- | --- | --- | --- |
 | Model dashboard | Dataset profile, observed outcomes, held-out ROC-AUC, lift, feature contract, and model version | Dataset aggregates and persisted model card | None |
 | Opportunities | Search, pagination, multi-select, batch scoring, calibrated probability, policy route, TreeSHAP factor inspection, and direct LeadFlow navigation | Data service, calibrated XGBoost, TreeSHAP, and deterministic scoring policy | None |
-| LeadFlow inbox | Linked inquiry creation, six action queues, priority/status filters, full-text inspection, semantic uncertainty, ML/Jev disagreement, policy reason, and status management | Jev semantic evaluation plus deterministic workflow policy and persisted history | One Jev evaluation per new uncached inquiry |
+| LeadFlow inbox | Linked inquiry creation, hierarchical catalog understanding, six action queues, priority/status filters, full-text inspection, semantic uncertainty, ML/Jev disagreement, priority provenance, and status management | Jev semantic evaluation plus deterministic hybrid workflow policy and persisted history | One Jev evaluation per new uncached inquiry |
 | CRM command bar | Selection-aware use of six approved tools, interpreted arguments, result scope, clarification, and preview/confirmation for status writes | Jev tool/choice selection plus Python validation and execution | One Jev evaluation per command; confirmation itself is free |
 | Verified analytics | Supported portfolio summaries, highest-value ranking, exact filters, and observed win-rate comparisons by business dimension | Deterministic full-population analytics | None |
 | Grounded explanation API | Narrative score explanation and missing-information summary | Optional LLM wording wrapped around immutable ML and policy evidence | One explanation call when explicitly enabled |
@@ -313,10 +322,12 @@ Python functions with typed responses.
 | --- | --- |
 | Closed-won probability and 0–100 score | Calibrated XGBoost pipeline |
 | Positive and negative model factors | TreeSHAP |
-| Inquiry intent, product, timeline, urgency, requirement, missing information | Jev semantic evaluation |
+| Inquiry intent, hierarchy-grounded product group, timeline, urgency, requirement, missing information | Jev semantic evaluation |
 | Command tool and supported categorical arguments | Jev semantic evaluation |
 | Record/inquiry ID parsing and validation | Python command service |
-| LeadFlow action, priority, explanation, disagreement, and outreach prohibition | Python workflow policy |
+| LeadFlow action and semantic base priority | Python workflow policy over Jev evidence |
+| Bounded qualification/nurture priority adjustment | Python workflow policy using the calibrated ML route |
+| Priority provenance, disagreement, and outreach prohibition | Python workflow policy |
 | Filters, scoring, explanations, rankings, and portfolio calculations | Approved Python tools |
 | Status mutation | SQLite service after explicit confirmation |
 | Optional narrative wording | Disabled-by-default explanation LLM |
@@ -328,6 +339,8 @@ Python functions with typed responses.
 - Model readiness and load errors are exposed by the health endpoint.
 - Scores are accepted from the calibrated ML service only.
 - Cache hits require both the active model version and the exact input hash.
+- Semantic cache hits require content, Jev model, question version, and catalog
+  taxonomy hash to match.
 - The outcome is available for evaluation displays but never enters inference.
 - LLM output is structurally validated and wrapped with application-owned
   decision fields.

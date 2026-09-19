@@ -36,6 +36,22 @@ class HybridPipelineTest(unittest.TestCase):
         self.assertNotIn("company", first)
         self.assertNotIn("email", first)
 
+    def test_product_taxonomy_is_derived_from_dataset_groups_and_subgroups(self):
+        taxonomy = self.data_service.product_taxonomy()
+        self.assertEqual(
+            taxonomy["Car Accessories"],
+            [
+                "Batteries & Accessories",
+                "Exterior Accessories",
+                "Garage & Car Care",
+                "Interior Accessories",
+                "Replacement Parts",
+                "Towing & Hitches",
+            ],
+        )
+        self.assertEqual(len(taxonomy), 4)
+        self.assertEqual(sum(map(len, taxonomy.values())), 11)
+
     def test_feature_contract_excludes_outcome_and_sales_cycle_leakage(self):
         self.assertTrue(set(FEATURE_COLUMNS).isdisjoint(LEAKAGE_COLUMNS))
         self.assertNotIn("outcome", FEATURE_COLUMNS)
