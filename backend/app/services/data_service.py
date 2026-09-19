@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -22,6 +23,8 @@ class DataService:
         self.data_path = Path(data_path or self.DEFAULT_DATA_PATH)
         if not self.data_path.exists():
             raise FileNotFoundError(f"B2B dataset not found: {self.data_path}")
+        self.dataset_checksum = hashlib.sha256(self.data_path.read_bytes()).hexdigest()
+        self.dataset_version = f"ibm-sales-win-loss-{self.dataset_checksum[:12]}"
         self.dataframe = normalize_sales_data(pd.read_csv(self.data_path))
 
     @property
@@ -110,6 +113,17 @@ class DataService:
             if column in frame:
                 frame = frame[frame[column].astype(str).str.casefold().eq(value.casefold())]
         return frame
+
+    def list_filtered_opportunities(
+        self, filters: Dict[str, str], limit: int = 20
+    ) -> Dict[str, Any]:
+        frame = self.filtered_frame(filters)
+        return {
+            "opportunities": self._records(frame.iloc[:limit]),
+            "total": int(len(frame)),
+            "returned": min(int(len(frame)), limit),
+            "filters": filters,
+        }
 
     def _dimension_summary(self, column: str) -> Dict[str, Dict[str, float]]:
         grouped = self.dataframe.groupby(column, dropna=False).agg(

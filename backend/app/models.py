@@ -86,3 +86,106 @@ class AnalyticsResponse(BaseModel):
     filters: Dict[str, Any] = Field(default_factory=dict)
     time_window: str
     sources: List[int] = Field(default_factory=list)
+
+
+WorkflowAction = Literal[
+    "quote_request",
+    "qualification",
+    "nurture",
+    "support",
+    "do_not_contact",
+    "human_review",
+]
+WorkflowPriority = Literal["urgent", "high", "medium", "low"]
+WorkflowStatus = Literal["new", "in_review", "reviewed", "resolved"]
+
+
+class ChoiceJudgment(BaseModel):
+    value: str
+    probabilities: Dict[str, float]
+    confidence: float = Field(..., ge=0.0, le=1.0)
+
+
+class NoulJudgment(BaseModel):
+    probability: float = Field(..., ge=0.0, le=1.0)
+
+
+class LeadFlowSemanticDecision(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    main_intent: ChoiceJudgment
+    product_interest: ChoiceJudgment
+    purchase_timeline: ChoiceJudgment
+    explicit_urgency: NoulJudgment
+    concrete_purchase_requirement: NoulJudgment
+    qualification_information_missing: NoulJudgment
+    provider_mode: Literal["demo", "live"]
+    model: str
+    question_version: str
+    cache_hit: bool = False
+    usage: Dict[str, int] = Field(default_factory=dict)
+
+
+class WorkflowDecision(BaseModel):
+    action: WorkflowAction
+    priority: WorkflowPriority
+    reason: str
+    policy_version: str
+    uncertainty: List[str] = Field(default_factory=list)
+    disagreement: Optional[str] = None
+    automated_outreach_allowed: bool = False
+
+
+class InquiryCreateRequest(BaseModel):
+    record_id: int = Field(..., ge=1)
+    inquiry_text: str = Field(..., min_length=4, max_length=2000)
+
+
+class InquiryStatusRequest(BaseModel):
+    status: WorkflowStatus
+
+
+class InquiryRecord(BaseModel):
+    id: int
+    record_id: int
+    opportunity_number: str
+    dataset_version: str
+    dataset_checksum: str
+    inquiry_text: str
+    status: WorkflowStatus
+    created_at: str
+    updated_at: str
+    opportunity: Opportunity
+    ml_score: OpportunityScore
+    semantic_decision: LeadFlowSemanticDecision
+    workflow_decision: WorkflowDecision
+
+
+class ActionQueueResponse(BaseModel):
+    items: List[InquiryRecord]
+    total: int
+    counts: Dict[str, int] = Field(default_factory=dict)
+    filters: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CommandRequest(BaseModel):
+    command: str = Field(..., min_length=2, max_length=500)
+    selected_record_ids: List[int] = Field(default_factory=list, max_length=20)
+    selected_inquiry_ids: List[int] = Field(default_factory=list, max_length=100)
+
+
+class CommandConfirmationRequest(BaseModel):
+    confirmation_id: str = Field(..., min_length=8, max_length=100)
+
+
+class CommandResponse(BaseModel):
+    tool: Optional[str] = None
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    interpreted_arguments: Dict[str, Any] = Field(default_factory=dict)
+    scope: Dict[str, Any] = Field(default_factory=dict)
+    message: str
+    result: Any = None
+    requires_confirmation: bool = False
+    confirmation_id: Optional[str] = None
+    provider_mode: Literal["demo", "live"]
+    model: str

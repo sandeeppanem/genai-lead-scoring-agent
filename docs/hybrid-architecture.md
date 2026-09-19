@@ -35,13 +35,18 @@ flowchart TD
         API[FastAPI routes]
         STORE[(Atomic JSON score cache)]
         LLM[Optional Claude explanation]
-        ANALYTICS[Allow-listed analytics]
+        ANALYTICS[Allow-listed analytics and CRM tools]
         UI[React application]
+        INQUIRIES[(SQLite inquiry store)]
+        JEV[Jev semantic judgments]
+        WF[Workflow policy]
 
         API <--> STORE
         API --> LLM --> API
         API --> UI
         ANALYTICS --> API
+        API <--> INQUIRIES
+        INQUIRIES --> JEV --> WF --> API
     end
 
     DS --> FC
@@ -122,6 +127,43 @@ The response reports:
 - Applied filters
 - Source record IDs for ranked opportunities
 - The dataset time-window description
+
+## LeadFlow architecture
+
+LeadFlow stores user-supplied inquiry text separately from the historical
+opportunity dataset. Each inquiry includes the linked record ID, opportunity
+number, dataset version, and source checksum. The checksum is checked again on
+read, preventing a future reorder or replacement of the CSV from silently
+moving an inquiry to a different record.
+
+Jev receives only the inquiry and the current product catalog. Independent
+Choice and Noul judgments cover main intent, catalog product interest,
+purchase timeline, urgency, concrete purchase requirement, and missing
+qualification information. The workflow policy composes these judgments in
+Python with the immutable ML score. It can therefore route an opt-out or
+support issue correctly even when the opportunity's conversion score is high,
+and it can show a high-score/early-research disagreement without confusing the
+two probabilities.
+
+`TYPESAFE_MODE=demo` uses deterministic rules and is explicitly marked in the
+response. `TYPESAFE_MODE=live` calls TypeSafe's HTTP System One endpoint.
+`TYPESAFE_MODE=gateway` calls the protected Vercel `/api/jev` function, which
+uses AI SDK 7 `experimental_evaluate` with `typesafe-ai/jev`. The browser never
+receives a provider credential. Gateway boolean answers are normalized to the
+internal Noul shape, while categorical confidence is computed from the
+returned probability distribution and labeled as application-derived.
+
+## CRM command architecture
+
+The command bar first obtains a constrained tool and categorical-argument
+judgment, then Python parses explicit record/inquiry IDs and validates all
+arguments against current dataset values. Only the six registered tools can
+execute. Analytics commands call structured operations directly; they do not
+feed an interpreted command back through the keyword parser. Listing reports
+the matching population and returned page, aggregation reports its full
+matching population, and date filters are rejected because the source has no
+event timestamps. Status updates create a SQLite confirmation record before
+any write and are applied only by the explicit confirmation endpoint.
 
 ## Operational controls
 

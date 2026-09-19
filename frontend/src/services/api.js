@@ -26,4 +26,32 @@ export const askQuestion = async (question) => (
   await api.post('/question', { question })
 ).data;
 
+export const createInquiry = async (recordId, inquiryText) => (
+  await api.post('/inquiries', { record_id: recordId, inquiry_text: inquiryText })
+).data;
+
+export const getActionQueue = async ({ action = null, status = null, priority = null } = {}) => {
+  const params = {};
+  if (action) params.action = action;
+  if (status) params.status = status;
+  if (priority) params.priority = priority;
+  return (await api.get('/action-queue', { params })).data;
+};
+
+export const updateInquiryStatus = async (inquiryId, status) => (
+  await api.post(`/inquiries/${inquiryId}/status`, { status })
+).data;
+
+export const executeCommand = async (command, selectedRecordIds = [], selectedInquiryIds = []) => (
+  await api.post('/commands', {
+    command,
+    selected_record_ids: selectedRecordIds,
+    selected_inquiry_ids: selectedInquiryIds,
+  })
+).data;
+
+export const confirmCommand = async (confirmationId) => (
+  await api.post('/commands/confirm', { confirmation_id: confirmationId })
+).data;
+
 export default api;

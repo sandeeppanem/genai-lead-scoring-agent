@@ -23,6 +23,9 @@ The application provides:
 - A React dashboard for model metrics, portfolio analytics, and scoring
 - Versioned, input-hashed score caching with atomic local persistence
 - Health and model-card endpoints for operational visibility
+- LeadFlow inquiry classification into quote, qualification, nurture, support,
+  do-not-contact, and human-review queues
+- A confirmation-gated CRM command bar backed by an allow-listed tool registry
 
 ## Architecture
 
@@ -47,8 +50,13 @@ flowchart TD
     API --> LLM[Optional grounded LLM explanation]
     LLM --> UI
 
-    DS --> TOOLS[Allow-listed analytics tools]
+    DS --> TOOLS[Allow-listed analytics and CRM tools]
     TOOLS --> API
+
+    INQUIRY[(Local SQLite inquiry store)] --> LEADFLOW[LeadFlow semantic judgments]
+    LEADFLOW --> POLICY[Workflow policy]
+    POLICY --> API
+    API --> COMMANDS[CRM command dispatcher]
 ```
 
 The prediction and explanation paths have separate responsibilities. The LLM
@@ -74,6 +82,10 @@ runtime flow and component contracts.
 | LLM service | Produces optional explanations from verified evidence in a typed response envelope |
 | Analytics service | Executes approved filters, groupings, and rankings over all eligible records |
 | Score storage | Stores model-versioned and input-hashed results using atomic file replacement |
+| Inquiry service | Stores inquiry text, dataset binding, decisions, workflow status, and history in SQLite |
+| Jev service | Runs deterministic demo judgments or optional live TypeSafe/Gateway evaluations |
+| Workflow policy | Composes semantic judgments with ML evidence into application-owned actions |
+| Command service | Maps requests to approved tools, validates arguments, and previews writes |
 
 ## Prediction contract
 
@@ -173,6 +185,26 @@ eligible dataset. It currently supports:
 Every response includes the matching population size, applied filters, source
 record IDs when applicable, and the available time-window description.
 
+## LeadFlow and CRM commands
+
+LeadFlow accepts an inquiry linked to an existing opportunity record. The
+inquiry is stored with the active dataset checksum so a future dataset change
+cannot silently reassign it. Jev-style semantic judgments are kept separate
+from the calibrated ML win probability; deterministic workflow policy owns the
+resulting action and priority. No inquiry text, outcome label, or completed
+sales-cycle field is sent to the ML model, and automated outreach is disabled.
+
+The default provider is `TYPESAFE_MODE=demo`. It is deterministic, offline,
+and always labeled as a demo provider in the API and UI. This makes the local
+flow and public no-key deployment usable without pretending that a mock result
+is live Jev output.
+
+The CRM command bar supports these approved tools: `list_opportunities`,
+`show_action_queue`, `score_opportunities`, `explain_opportunity`,
+`summarize_portfolio`, and `update_workflow_status`. Numeric record IDs and
+categorical values are resolved in Python. Workflow status changes are always
+previewed and require an explicit confirmation request.
+
 ## API
 
 | Method | Endpoint | Purpose |
@@ -183,6 +215,12 @@ record IDs when applicable, and the available time-window description.
 | `POST` | `/api/opportunities/{record_id}/explanation` | Typed grounded explanation |
 | `GET` | `/api/model` | Model card and readiness |
 | `POST` | `/api/question` | Verified conversational analytics |
+| `POST` | `/api/inquiries` | Create, classify, and route a linked inquiry |
+| `GET` | `/api/action-queue` | Filter the LeadFlow inbox |
+| `GET` | `/api/inquiries/{inquiry_id}` | Inspect one inquiry decision trail |
+| `POST` | `/api/inquiries/{inquiry_id}/status` | Update one local workflow status |
+| `POST` | `/api/commands` | Interpret and execute an approved CRM command |
+| `POST` | `/api/commands/confirm` | Apply a previewed status change |
 | `GET` | `/api/stats` | Portfolio aggregates |
 | `GET` | `/api/scores` | Current-model cached scores |
 | `GET` | `/api/health` | Data, ML model, and optional LLM health |
@@ -212,6 +250,47 @@ explanations, copy `backend/env.example` to `backend/.env` and set
 configured with `CORS_ALLOWED_ORIGINS`. Never use an `ANTHROPIC_API_KEY` or any
 other secret in a `REACT_APP_*` variable: Create React App embeds those values
 in the downloadable browser bundle.
+
+### Optional live Jev through Vercel AI Gateway
+
+Direct TypeSafe API access is optional and requires `TYPESAFE_API_KEY`. When
+that access is waitlisted, the supported live path is Vercel AI Gateway's
+evaluation model `typesafe-ai/jev`. Evaluation uses AI SDK 7's
+`experimental_evaluate`, not `generateText`; the server adapter normalizes
+Gateway's boolean answers to this API's Noul contract and records that
+confidence was computed by the adapter from the returned distribution.
+
+For a local one-request smoke test, create the ignored file
+`frontend/.env.local`:
+
+```bash
+AI_GATEWAY_API_KEY=your-vercel-gateway-key
+```
+
+Then run:
+
+```bash
+npm --prefix frontend run test:jev-gateway
+```
+
+The command prints only the returned model, sample classification,
+probabilities, and token usage. It never prints the key. The React browser does
+not use this variable.
+
+For a deployed live configuration, set `AI_GATEWAY_API_KEY` and a new random
+`JEV_ADAPTER_TOKEN` as Vercel server environment variables. Set the same
+`JEV_ADAPTER_TOKEN` on Render, plus:
+
+```bash
+TYPESAFE_MODE=gateway
+JEV_GATEWAY_ADAPTER_URL=https://genai-lead-scoring-agent.vercel.app/api/jev
+```
+
+The adapter rejects requests without the shared token, caps state at 20 KB and
+questions at 12, uses a 15-second timeout, and does not log inquiry state or
+credentials. Keep `AI_GATEWAY_API_KEY` out of Git, frontend source, and all
+`REACT_APP_*` variables. If you leave `TYPESAFE_MODE=demo`, no Gateway credit
+is used and all decisions remain clearly labeled deterministic demo output.
 
 ### Frontend
 
@@ -280,11 +359,15 @@ schema drift.
 ```bash
 PYTHONPATH=backend python3 -m unittest discover -s backend/tests -v
 npm --prefix frontend run build
+npm --prefix frontend run test:adapter
 ```
 
 The test suite covers dataset normalization, leakage exclusions, calibrated
 scoring, source-level TreeSHAP factors, cache invalidation, policy safety,
-analytics scope, health, and the end-to-end HTTP contract.
+analytics scope, LeadFlow labels and routing, command arguments and scope,
+preview-before-apply status changes, Gateway adapter normalization, health,
+and the end-to-end HTTP contract. The live smoke test is intentionally
+separate because it consumes one Gateway request and needs a user-owned key.
 
 ## Repository structure
 
@@ -293,13 +376,15 @@ backend/
   app/
     api/                   FastAPI routes
     ml/                    Shared feature contract
-    services/              Data, scoring, policy, LLM, analytics, and cache
+    services/              Data, scoring, LeadFlow, policy, LLM, analytics, commands, and cache
   data/b2b/                Active B2B dataset and source documentation
   models/                  Trained XGBoost artifact and model card
   scripts/train_model.py   Reproducible training pipeline
   tests/                   Service and HTTP contract tests
 frontend/
   src/                     React dashboard and API client
+  api/jev.js               Server-only Vercel Gateway evaluation adapter
+  scripts/test-jev-gateway.js  One-request live Gateway smoke test
 docs/
   hybrid-architecture.md   Detailed current architecture
 ```

@@ -7,6 +7,11 @@ from fastapi.testclient import TestClient
 from app.api import routes
 from app.main import app
 from app.services.score_storage import ScoreStorage
+from app.services.command_service import CommandService
+from app.services.inquiry_service import InquiryService
+from app.services.jev_service import JevService
+from app.services.leadflow_service import LeadFlowService
+from app.services.workflow_policy_service import WorkflowPolicyService
 
 
 class APIContractTest(unittest.TestCase):
@@ -14,14 +19,42 @@ class APIContractTest(unittest.TestCase):
     def setUpClass(cls):
         cls.temp_dir = tempfile.TemporaryDirectory()
         cls.original_storage = routes.scoring_service.score_storage
+        cls.original_inquiry_service = routes.inquiry_service
+        cls.original_jev_service = routes.jev_service
+        cls.original_leadflow_service = routes.leadflow_service
+        cls.original_command_service = routes.command_service
         routes.scoring_service.score_storage = ScoreStorage(
             Path(cls.temp_dir.name) / "scores.json"
+        )
+        routes.inquiry_service = InquiryService(
+            Path(cls.temp_dir.name) / "leadflow.db"
+        )
+        routes.jev_service = JevService()
+        routes.leadflow_service = LeadFlowService(
+            routes.data_service,
+            routes.scoring_service,
+            routes.inquiry_service,
+            routes.jev_service,
+            WorkflowPolicyService(),
+        )
+        routes.command_service = CommandService(
+            routes.data_service,
+            routes.scoring_service,
+            routes.analytics_service,
+            routes.llm_service,
+            routes.inquiry_service,
+            routes.leadflow_service,
+            routes.jev_service,
         )
         cls.client = TestClient(app)
 
     @classmethod
     def tearDownClass(cls):
         routes.scoring_service.score_storage = cls.original_storage
+        routes.inquiry_service = cls.original_inquiry_service
+        routes.jev_service = cls.original_jev_service
+        routes.leadflow_service = cls.original_leadflow_service
+        routes.command_service = cls.original_command_service
         cls.client.close()
         cls.temp_dir.cleanup()
 
@@ -103,6 +136,51 @@ class APIContractTest(unittest.TestCase):
             json={"record_ids": list(range(1, 22))},
         )
         self.assertEqual(response.status_code, 422, response.text)
+
+    def test_leadflow_and_command_api_contract(self):
+        created = self.client.post(
+            "/api/inquiries",
+            json={
+                "record_id": 1,
+                "inquiry_text": "Please quote 200 replacement batteries; we need delivery next month.",
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        item = created.json()
+        self.assertEqual(item["workflow_decision"]["action"], "quote_request")
+        self.assertEqual(item["semantic_decision"]["provider_mode"], "demo")
+        self.assertNotEqual(
+            item["semantic_decision"]["main_intent"]["probabilities"],
+            item["ml_score"]["probability"],
+        )
+
+        queue = self.client.get("/api/action-queue?action=quote_request")
+        self.assertEqual(queue.status_code, 200, queue.text)
+        self.assertEqual(queue.json()["total"], 1)
+
+        command = self.client.post(
+            "/api/commands",
+            json={"command": "Explain the score for record 1."},
+        )
+        self.assertEqual(command.status_code, 200, command.text)
+        self.assertEqual(command.json()["tool"], "explain_opportunity")
+        self.assertEqual(command.json()["result"]["record_id"], 1)
+
+        preview = self.client.post(
+            "/api/commands",
+            json={
+                "command": "Mark the selected inquiry as reviewed.",
+                "selected_inquiry_ids": [item["id"]],
+            },
+        )
+        self.assertEqual(preview.status_code, 200, preview.text)
+        self.assertTrue(preview.json()["requires_confirmation"])
+        confirmation = self.client.post(
+            "/api/commands/confirm",
+            json={"confirmation_id": preview.json()["confirmation_id"]},
+        )
+        self.assertEqual(confirmation.status_code, 200, confirmation.text)
+        self.assertEqual(confirmation.json()["result"]["status"], "reviewed")
 
 
 if __name__ == "__main__":

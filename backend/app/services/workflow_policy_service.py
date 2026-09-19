@@ -1,0 +1,92 @@
+from __future__ import annotations
+
+import os
+from typing import Any, Dict, List
+
+
+class WorkflowPolicyService:
+    """Application-owned policy composed from semantic and calibrated ML outputs."""
+
+    POLICY_VERSION = "leadflow-policy-v1"
+
+    def __init__(self) -> None:
+        self.confidence_threshold = float(
+            os.getenv("LEADFLOW_CONFIDENCE_THRESHOLD", "0.55")
+        )
+
+    def decide(
+        self, semantic: Dict[str, Any], ml_score: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        intent = semantic["main_intent"]["value"]
+        intent_confidence = float(semantic["main_intent"]["confidence"])
+        intent_probability = float(
+            semantic["main_intent"]["probabilities"].get(intent, 0.0)
+        )
+        timeline = semantic["purchase_timeline"]["value"]
+        urgent = semantic["explicit_urgency"]["probability"] >= 0.7
+        concrete = semantic["concrete_purchase_requirement"]["probability"] >= 0.6
+        missing = semantic["qualification_information_missing"]["probability"] >= 0.6
+        uncertainty = self._uncertainty(semantic)
+
+        if intent == "opt_out" and intent_probability >= 0.4:
+            action, priority = "do_not_contact", "urgent"
+            reason = "The inquiry asks to stop contact; suppression takes precedence over every ML score."
+        elif intent == "support" and intent_probability >= 0.4:
+            action, priority = "support", "urgent" if urgent else "high"
+            reason = "A service or defect issue belongs with support, independently of sales propensity."
+        elif intent_confidence < self.confidence_threshold:
+            action, priority = "human_review", "medium"
+            reason = "The semantic intent is below the configured confidence threshold."
+        elif intent == "quote_request":
+            if concrete and not missing:
+                action = "quote_request"
+                priority = "urgent" if urgent or timeline in {"immediate", "within_30_days"} else "high"
+                reason = "A concrete quote request has enough information to prepare a response."
+            else:
+                action, priority = "qualification", "high" if urgent else "medium"
+                reason = "The customer shows purchase intent, but qualification details are still missing."
+        elif intent == "product_fit":
+            action, priority = "qualification", "medium"
+            reason = "A product-fit question needs compatibility details before a quote or recommendation."
+        elif intent == "research":
+            action, priority = "nurture", "low" if timeline in {"three_to_twelve_months", "beyond_twelve_months"} else "medium"
+            reason = "The inquiry is exploratory rather than a concrete current purchase request."
+        else:
+            action, priority = "human_review", "low"
+            reason = "The inquiry does not map confidently to an approved automated queue."
+
+        disagreement = None
+        ml_route = ml_score["routing"]["next_action"]
+        if ml_route == "sales_review" and action == "nurture":
+            disagreement = "High ML propensity, but the inquiry is early research; workflow policy chooses nurture."
+        elif ml_route == "low_priority" and action in {"quote_request", "support", "do_not_contact"}:
+            disagreement = "Low ML propensity does not override the inquiry's immediate operational need."
+
+        return {
+            "action": action,
+            "priority": priority,
+            "reason": reason,
+            "policy_version": self.POLICY_VERSION,
+            "uncertainty": uncertainty,
+            "disagreement": disagreement,
+            "automated_outreach_allowed": False,
+        }
+
+    def _uncertainty(self, semantic: Dict[str, Any]) -> List[str]:
+        output: List[str] = []
+        for key, label in (
+            ("main_intent", "main intent"),
+            ("product_interest", "product interest"),
+            ("purchase_timeline", "purchase timeline"),
+        ):
+            if semantic[key]["confidence"] < self.confidence_threshold:
+                output.append(f"Low confidence for {label}")
+        for key, label in (
+            ("explicit_urgency", "urgency"),
+            ("concrete_purchase_requirement", "purchase requirement"),
+            ("qualification_information_missing", "missing qualification information"),
+        ):
+            probability = semantic[key]["probability"]
+            if 0.35 <= probability <= 0.65:
+                output.append(f"Uncertain {label}")
+        return output

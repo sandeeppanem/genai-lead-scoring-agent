@@ -2,20 +2,27 @@
   "name": "genai-lead-scoring-frontend",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "dependencies": {
+    "@emotion/react": "^11.11.0",
+    "@emotion/styled": "^11.11.0",
+    "@mui/icons-material": "^5.14.0",
+    "@mui/material": "^5.14.0",
+    "ai": "^7.0.106",
+    "axios": "^1.6.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
-    "axios": "^1.6.0",
-    "@mui/material": "^5.14.0",
-    "@mui/icons-material": "^5.14.0",
-    "@emotion/react": "^11.11.0",
-    "@emotion/styled": "^11.11.0",
     "recharts": "^2.8.0"
   },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "test:adapter": "node --test api/jev.test.js",
+    "test:jev-gateway": "node scripts/test-jev-gateway.js",
+    "serve:jev-local": "node scripts/serve-jev-local.js",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

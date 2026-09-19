@@ -42,10 +42,9 @@ const scoreColor = (score) => {
   return 'default';
 };
 
-const LeadTable = () => {
+const LeadTable = ({ selected = [], onSelectionChange = () => {} }) => {
   const [opportunities, setOpportunities] = useState([]);
   const [scores, setScores] = useState({});
-  const [selected, setSelected] = useState([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
@@ -66,7 +65,7 @@ const LeadTable = () => {
       setOpportunities(data.opportunities);
       setTotal(data.total);
       setScores(cached.scores || {});
-      setSelected([]);
+      onSelectionChange([]);
     } catch (requestError) {
       console.error(requestError);
       setError('Unable to load opportunities.');
@@ -89,7 +88,7 @@ const LeadTable = () => {
       const updated = { ...scores };
       results.forEach((result) => { updated[result.record_id] = result; });
       setScores(updated);
-      setSelected([]);
+      onSelectionChange([]);
     } catch (requestError) {
       console.error(requestError);
       setError('ML scoring failed. Check model health and try again.');
@@ -149,7 +148,7 @@ const LeadTable = () => {
                 <Checkbox
                   checked={selected.length === opportunities.length && opportunities.length > 0}
                   indeterminate={selected.length > 0 && selected.length < opportunities.length}
-                  onChange={() => setSelected(
+                  onChange={() => onSelectionChange(
                     selected.length === opportunities.length
                       ? []
                       : opportunities.map((item) => item.record_id)
@@ -176,11 +175,11 @@ const LeadTable = () => {
                   <TableCell padding="checkbox">
                     <Checkbox
                       checked={selected.includes(item.record_id)}
-                      onChange={() => setSelected((current) => (
-                        current.includes(item.record_id)
-                          ? current.filter((id) => id !== item.record_id)
-                          : [...current, item.record_id]
-                      ))}
+                      onChange={() => onSelectionChange(
+                        selected.includes(item.record_id)
+                          ? selected.filter((id) => id !== item.record_id)
+                          : [...selected, item.record_id]
+                      )}
                     />
                   </TableCell>
                   <TableCell>
