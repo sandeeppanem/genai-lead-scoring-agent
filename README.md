@@ -312,9 +312,9 @@ The hosted application uses two services:
   `uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT`.
 
 `frontend/.env.production` points Vercel builds at the Render API. The backend
-allows localhost plus deployment URLs belonging to this project's Vercel name;
-override `CORS_ALLOWED_ORIGINS` or `CORS_ALLOWED_ORIGIN_REGEX` when using a
-different domain.
+allows any `localhost` or `127.0.0.1` development port plus deployment URLs
+belonging to this project's Vercel name; override `CORS_ALLOWED_ORIGINS` or
+`CORS_ALLOWED_ORIGIN_REGEX` when using a different domain.
 
 The frontend and backend must be deployed from the same revision. Verify a
 deployment before testing the UI:

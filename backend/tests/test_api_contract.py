@@ -111,7 +111,12 @@ class APIContractTest(unittest.TestCase):
         self.assertEqual(response.headers["access-control-allow-origin"], origin)
 
     def test_local_development_origins_are_allowed(self):
-        for origin in ("http://localhost:3000", "http://127.0.0.1:3000"):
+        for origin in (
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:3002",
+            "http://127.0.0.1:4173",
+        ):
             with self.subTest(origin=origin):
                 response = self.client.options(
                     "/api/stats",
